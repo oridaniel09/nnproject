@@ -13,17 +13,17 @@
 6. okay, I'm back in qemu, what to do now
 7. done
 8. I want to set up this repo in the vm. Can you scp it ?
-9. now I want to run pyperformance on it, I want to use the benchmark Nbody
-10. pyperformance: error: unrecognized arguments: --values 10 --loops 1
-11. where does it save the results?
-12. (pyperf-venv) root@ubuntu:~/nnproject# python -m pyperf system tune
-    Tune the system configuration to run benchmarks
-    ...
-    Errors
-    ======
-    Turbo Boost (MSR): Failed to read MSR 0x1a0 from /dev/cpu/0/msr: [Errno 2] No such file or directory: '/dev/cpu/0/msr'
-    Turbo Boost (MSR): Try to load the msr kernel module: sudo modprobe msr
-    (pyperf-venv) root@ubuntu:~/nnproject#
-
-    Maybe I forgot something in the configuration - as per the pdfs given to me
-13. Maybe I missed something in the configuration - as per the pdfs given to me
+9. yes. I want to first get rid of the Nbody experiment. I had to change experiments.
+   Let's pick a new one from the list on @Project.pdf
+10. (in response to clarifying questions on which benchmark to pick) Give me a list of all the benchmarks. My partner is doing raytrace for the second one / Raytrace
+11. what hardware accelerator could be possible with deepblue
+12. explain go benchmark
+13. What hardware accelerator can we use for go
+14. give me the analysis for picke_dict
+15. let's analyze sqlite_synth
+16. it seems that you think pyflate is the best idea
+17. let's go with pyflate
+18. (in response to a clarifying question on how to handle the old Nbody folder) Delete it entirely
+19. also remove the commits from git history
+20. just open a dict.
+    Afterwards we want to get baseline results.
