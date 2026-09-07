@@ -1,0 +1,63 @@
+########################################################################
+# pyflate — hardware counter results (baseline)
+########################################################################
+# interpreter : /root/nnproject/Pyflate/venv/cpython3.10-09561ca6a071-compat-31b33d68c68a/bin/python (Py_DEBUG=0)
+# workload    : 5 decompression loops of interpreter.tar.bz2 (67562 bytes)
+# recorded    : 2026-09-07T14:53:59Z
+# cpu         : Intel(R) Xeon(R) CPU E5-2630 v3 @ 2.40GHz
+########################################################################
+
+===== GROUP 1: core + branch =====
+perf stat -r 3 -e cycles,instructions,branches,branch-misses
+
+loops=5 total=5.675s per-loop=1.135s
+loops=5 total=5.582s per-loop=1.116s
+loops=5 total=5.746s per-loop=1.149s
+
+ Performance counter stats for '/root/nnproject/Pyflate/venv/cpython3.10-09561ca6a071-compat-31b33d68c68a/bin/python /root/nnproject/Pyflate/pyspy_driver.py 5' (3 runs):
+
+       13637215142      cycles                                                        ( +-  0.47% )
+       35794198438      instructions              #    2.63  insn per cycle           ( +-  0.03% )
+        7114835494      branches                                                      ( +-  0.07% )
+          24180671      branch-misses             #    0.34% of all branches          ( +-  2.79% )
+
+            5.7769 +- 0.0477 seconds time elapsed  ( +-  0.83% )
+
+
+===== GROUP 2: last-level cache =====
+perf stat -r 3 -e cache-references,cache-misses
+
+loops=5 total=5.613s per-loop=1.123s
+loops=5 total=5.723s per-loop=1.145s
+loops=5 total=5.603s per-loop=1.121s
+
+ Performance counter stats for '/root/nnproject/Pyflate/venv/cpython3.10-09561ca6a071-compat-31b33d68c68a/bin/python /root/nnproject/Pyflate/pyspy_driver.py 5' (3 runs):
+
+          25762049      cache-references                                              ( +-  1.75% )
+           1876831      cache-misses              #    7.087 % of all cache refs      ( +-  3.52% )
+
+            5.7520 +- 0.0383 seconds time elapsed  ( +-  0.67% )
+
+
+===== GROUP 3: L1 data cache =====
+perf stat -r 3 -e L1-dcache-loads,L1-dcache-load-misses
+
+loops=5 total=5.744s per-loop=1.149s
+loops=5 total=5.588s per-loop=1.118s
+loops=5 total=5.688s per-loop=1.138s
+
+ Performance counter stats for '/root/nnproject/Pyflate/venv/cpython3.10-09561ca6a071-compat-31b33d68c68a/bin/python /root/nnproject/Pyflate/pyspy_driver.py 5' (3 runs):
+
+       10767384277      L1-dcache-loads                                               ( +-  0.06% )
+         271623206      L1-dcache-load-misses     #    2.52% of all L1-dcache accesses  ( +-  0.75% )
+
+            5.7809 +- 0.0456 seconds time elapsed  ( +-  0.79% )
+
+
+===== NOT AVAILABLE ON THIS QEMU vPMU =====
+LLC-loads / LLC-load-misses         -> <not supported>
+dTLB-load-misses / iTLB-load-misses -> always 0 (not virtualised)
+stalled-cycles-frontend/backend     -> not exposed
+
+Counters are virtualised: good for relative before/after comparison,
+not for absolute microarchitectural claims.

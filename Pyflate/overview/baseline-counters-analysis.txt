@@ -1,0 +1,95 @@
+########################################################################
+# pyflate — hardware counter baseline (perf stat)
+########################################################################
+# Build      : release CPython 3.10.12 (Py_DEBUG=0) — NOT the debug build
+# Workload   : pyspy_driver.py 5  (5 decompression loops of interpreter.tar.bz2, 67562 bytes)
+# Repeats    : perf stat -r 3   (mean +- relative stddev)
+# Host       : QEMU/KVM guest, Intel Xeon E5-2630 v3 @ 2.40GHz, 1 vCPU
+# Recorded   : 2026-09-07T14:33Z
+#
+# NOTE: counters were collected in small groups. Programming 4+ events at
+# once on this virtualised PMU causes counter-allocation conflicts (it
+# silently returned L1-dcache-loads = 0). Keep groups small and sanity-check
+# any counter that reads exactly 0.
+########################################################################
+
+
+===== GROUP 1: core + branch =====
+perf stat -r 3 -e cycles,instructions,branches,branch-misses
+
+       13481427356      cycles                                      ( +-  1.53% )
+       35798345289      instructions   #  2.61 insn per cycle       ( +-  0.27% )
+        7120924804      branches                                    ( +-  0.41% )
+          23542702      branch-misses  #  0.33% of all branches     ( +-  2.94% )
+
+            5.827 +- 0.128 seconds time elapsed  ( +- 2.20% )
+
+
+===== GROUP 2: last-level cache =====
+perf stat -r 3 -e cache-references,cache-misses
+
+          25833588      cache-references                            ( +-  2.35% )
+           1930273      cache-misses   #  7.316% of all cache refs  ( +-  0.92% )
+
+           5.8064 +- 0.0267 seconds time elapsed  ( +- 0.46% )
+
+
+===== GROUP 3: L1 data cache (run as an isolated pair) =====
+perf stat -r 3 -e L1-dcache-loads,L1-dcache-load-misses
+
+       10766155873      L1-dcache-loads                             ( +-  0.11% )
+         264836732      L1-dcache-load-misses  # 2.46% of accesses  ( +-  0.50% )
+
+           5.7864 +- 0.0333 seconds time elapsed  ( +- 0.57% )
+
+
+===== DERIVED, PER SINGLE DECOMPRESSION LOOP =====
+(group totals / 5 loops)
+
+    cycles                  2.696 G
+    instructions            7.160 G
+    IPC                     2.61
+    branches                1.424 G      (19.9% of all instructions)
+    branch-misses           4.71  M      (0.33% miss rate)
+    cache-references        5.17  M
+    cache-misses            0.386 M      (7.32% miss rate)
+    L1-dcache-loads         2.153 G
+    L1-dcache-load-misses   53.0  M      (2.46% miss rate)
+
+    input size              67562 bytes (interpreter.tar.bz2)
+    instructions/input byte ~105,975
+
+
+===== INTERPRETATION =====
+The workload is INSTRUCTION-THROUGHPUT BOUND, not memory- or branch-bound:
+
+  * IPC of 2.61 is high — the core is issuing near its width, not stalling.
+  * Branch misprediction is 0.33% — essentially free. The bytecode dispatch
+    loop predicts well (CPython here is built --with-computed-gotos).
+  * L1 miss rate 2.46% and LLC miss rate 7.3% of references are unremarkable;
+    the working set is small (a 67 KB input, 900 KB bzip2 block).
+
+So the cost is simply the SHEER NUMBER of instructions retired: ~7.16 billion
+to decompress 67 KB, about 106,000 instructions per input byte. That is
+interpreter overhead, not algorithmic necessity — a C bzip2 decoder does this
+in the low hundreds of instructions per byte.
+
+Consequences:
+  * Software optimisation should target INSTRUCTION COUNT (fewer Python-level
+    operations per decoded symbol), not cache locality. This matches the
+    py-spy profile: move_to_front (15.8% self) rebuilds a 256-entry list per
+    symbol, and find_next_symbol linearly scans the Huffman table per symbol.
+  * Hardware acceleration is well justified: a dedicated Huffman decoder +
+    MTF unit would replace billions of interpreter instructions with a few
+    cycles per symbol, and the small working set means it needs little
+    memory bandwidth.
+
+
+===== NOT AVAILABLE ON THIS QEMU vPMU =====
+    LLC-loads, LLC-load-misses          -> <not supported>
+    dTLB-load-misses, iTLB-load-misses  -> always 0 (not virtualised)
+    stalled-cycles-frontend/backend     -> not exposed
+
+Counters are virtualised and should be treated as accurate to a few percent,
+good for relative before/after comparison rather than absolute microarchitectural
+claims.
