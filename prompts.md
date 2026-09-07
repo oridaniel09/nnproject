@@ -27,3 +27,15 @@
 19. also remove the commits from git history
 20. just open a dict.
     Afterwards we want to get baseline results.
+21. let's get a flame graph.
+    What command are you running to get this?
+22. the flame graph has nonsensical names. Why is this happening? Is the code C compiled?
+    Maybe we should run with pypy?
+23. yes, install py-spy and generate the python-level flame graph. Also delete the old
+    benchmark data, flame graph, the whole lot
+24. What benchmarks did I get besides the flamegraph? I want branch misses, cycles,
+    the usual stuff. Is this available?
+25. can you add a file called performace-analyze that has scripts that do all of these runs?
+    the py-spy to get the flame graph, and perf stat -r 3, all of the things we did in this
+    session
+26. I want to present the baseline results. Give me some metrics from the results in a table.
