@@ -41,3 +41,5 @@
 26. I want to present the baseline results. Give me some metrics from the results in a table.
 27. You have been given comments on the previous commits you made in the repository.
     @copilot resolve the merge conflicts in this pull request
+28. currently, I want to actually make the changes. look in my presentation, I explained
+    the two software areas I want to improve
