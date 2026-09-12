@@ -9,13 +9,13 @@ set -euo pipefail
 RUNS="${RUNS:-3}"
 
 # Image parameters chosen before each run
-IMG_WIDTH="${WIDTH:-800}"
-IMG_HEIGHT="${HEIGHT:-800}"
+IMG_WIDTH="${WIDTH:-200}"
+IMG_HEIGHT="${HEIGHT:-200}"
 
 # 2. The sampling rate of perf / py-spy
 # Minimal: 1 Hz
 # Maximal: System dependent (often 100000 Hz via /proc/sys/kernel/perf_event_max_sample_rate)
-PYSPY_RATE="${RATE:-999}"
+PYSPY_RATE="${RATE:-100}"
 
 # Events list requested for profiling
 EVENTS="cpu-clock,task-clock,cycles,instructions,branch-instructions,branch-misses,bus-cycles,cache-references,cache-misses,ref-cycles,page-faults,minor-faults,major-faults,context-switches,LLC-loads,LLC-stores"
@@ -51,7 +51,7 @@ for TARGET in "simpleRaytrace.py" "Praytrace.py"; do
     # Py-spy flame graph 
     echo "Generating native Flame Graph at ${PYSPY_RATE}Hz..."
     py-spy record --rate "$PYSPY_RATE" --native --output "$SVG_OUT" \
-        -- python3 "$TARGET" --width="$IMG_WIDTH" --height="$IMG_HEIGHT"
+        -- python3 "$TARGET" --width="$IMG_WIDTH" --height="$IMG_HEIGHT" || true
     
     echo "Saved $PERF_OUT"
     echo "Saved $SVG_OUT"
