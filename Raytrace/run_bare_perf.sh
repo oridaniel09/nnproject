@@ -4,11 +4,11 @@ set -euo pipefail
 # ==========================================
 # General Parameters
 # ==========================================
-PY_RUNS="${PY_RUNS:-3}"
+PY_RUNS="${PY_RUNS:-10}"
 C_RUNS="${C_RUNS:-50}"
 
 # Independent loop counts for flame graph sampling
-PY_RECORD_LOOPS="${PY_RECORD_LOOPS:-3}"
+PY_RECORD_LOOPS="${PY_RECORD_LOOPS:-10}"
 C_RECORD_LOOPS="${C_RECORD_LOOPS:-50}"
 
 IMG_WIDTH="${WIDTH:-400}"
