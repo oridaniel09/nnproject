@@ -1,0 +1,491 @@
+<?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg version="1.1" width="1200" height="330" onload="init(evt)" viewBox="0 0 1200 330" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:fg="http://github.com/jonhoo/inferno"><!--Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples.--><!--NOTES: --><defs><linearGradient id="background" y1="0" y2="1" x1="0" x2="0"><stop stop-color="#eeeeee" offset="5%"/><stop stop-color="#eeeeb0" offset="95%"/></linearGradient></defs><style type="text/css">
+text { font-family:monospace; font-size:12px }
+#title { text-anchor:middle; font-size:17px; }
+#matched { text-anchor:end; }
+#search { text-anchor:end; opacity:0.1; cursor:pointer; }
+#search:hover, #search.show { opacity:1; }
+#subtitle { text-anchor:middle; font-color:rgb(160,160,160); }
+#unzoom { cursor:pointer; }
+#frames > *:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+.hide { display:none; }
+.parent { opacity:0.5; }
+</style><script type="text/ecmascript"><![CDATA[
+        var nametype = 'Function:';
+        var fontsize = 12;
+        var fontwidth = 0.59;
+        var xpad = 10;
+        var inverted = true;
+        var searchcolor = 'rgb(230,0,230)';
+        var fluiddrawing = true;
+        var truncate_text_right = false;
+    ]]><![CDATA["use strict";
+var details, searchbtn, unzoombtn, matchedtxt, svg, searching, frames, known_font_width;
+function init(evt) {
+    details = document.getElementById("details").firstChild;
+    searchbtn = document.getElementById("search");
+    unzoombtn = document.getElementById("unzoom");
+    matchedtxt = document.getElementById("matched");
+    svg = document.getElementsByTagName("svg")[0];
+    frames = document.getElementById("frames");
+    known_font_width = get_monospace_width(frames);
+    total_samples = parseInt(frames.attributes.total_samples.value);
+    searching = 0;
+
+    // Use GET parameters to restore a flamegraph's state.
+    var restore_state = function() {
+        var params = get_params();
+        if (params.x && params.y)
+            zoom(find_group(document.querySelector('[*|x="' + params.x + '"][y="' + params.y + '"]')));
+        if (params.s)
+            search(params.s);
+    };
+
+    if (fluiddrawing) {
+        // Make width dynamic so the SVG fits its parent's width.
+        svg.removeAttribute("width");
+        // Edge requires us to have a viewBox that gets updated with size changes.
+        var isEdge = /Edge\/\d./i.test(navigator.userAgent);
+        if (!isEdge) {
+            svg.removeAttribute("viewBox");
+        }
+        var update_for_width_change = function() {
+            if (isEdge) {
+                svg.attributes.viewBox.value = "0 0 " + svg.width.baseVal.value + " " + svg.height.baseVal.value;
+            }
+
+            // Keep consistent padding on left and right of frames container.
+            frames.attributes.width.value = svg.width.baseVal.value - xpad * 2;
+
+            // Text truncation needs to be adjusted for the current width.
+            update_text_for_elements(frames.children);
+
+            // Keep search elements at a fixed distance from right edge.
+            var svgWidth = svg.width.baseVal.value;
+            searchbtn.attributes.x.value = svgWidth - xpad;
+            matchedtxt.attributes.x.value = svgWidth - xpad;
+        };
+        window.addEventListener('resize', function() {
+            update_for_width_change();
+        });
+        // This needs to be done asynchronously for Safari to work.
+        setTimeout(function() {
+            unzoom();
+            update_for_width_change();
+            restore_state();
+        }, 0);
+    } else {
+        restore_state();
+    }
+}
+// event listeners
+window.addEventListener("click", function(e) {
+    var target = find_group(e.target);
+    if (target) {
+        if (target.nodeName == "a") {
+            if (e.ctrlKey === false) return;
+            e.preventDefault();
+        }
+        if (target.classList.contains("parent")) unzoom();
+        zoom(target);
+
+        // set parameters for zoom state
+        var el = target.querySelector("rect");
+        if (el && el.attributes && el.attributes.y && el.attributes["fg:x"]) {
+            var params = get_params()
+            params.x = el.attributes["fg:x"].value;
+            params.y = el.attributes.y.value;
+            history.replaceState(null, null, parse_params(params));
+        }
+    }
+    else if (e.target.id == "unzoom") {
+        unzoom();
+
+        // remove zoom state
+        var params = get_params();
+        if (params.x) delete params.x;
+        if (params.y) delete params.y;
+        history.replaceState(null, null, parse_params(params));
+    }
+    else if (e.target.id == "search") search_prompt();
+}, false)
+// mouse-over for info
+// show
+window.addEventListener("mouseover", function(e) {
+    var target = find_group(e.target);
+    if (target) details.nodeValue = nametype + " " + g_to_text(target);
+}, false)
+// clear
+window.addEventListener("mouseout", function(e) {
+    var target = find_group(e.target);
+    if (target) details.nodeValue = ' ';
+}, false)
+// ctrl-F for search
+window.addEventListener("keydown",function (e) {
+    if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+        e.preventDefault();
+        search_prompt();
+    }
+}, false)
+// functions
+function get_params() {
+    var params = {};
+    var paramsarr = window.location.search.substr(1).split('&');
+    for (var i = 0; i < paramsarr.length; ++i) {
+        var tmp = paramsarr[i].split("=");
+        if (!tmp[0] || !tmp[1]) continue;
+        params[tmp[0]]  = decodeURIComponent(tmp[1]);
+    }
+    return params;
+}
+function parse_params(params) {
+    var uri = "?";
+    for (var key in params) {
+        uri += key + '=' + encodeURIComponent(params[key]) + '&';
+    }
+    if (uri.slice(-1) == "&")
+        uri = uri.substring(0, uri.length - 1);
+    if (uri == '?')
+        uri = window.location.href.split('?')[0];
+    return uri;
+}
+function find_child(node, selector) {
+    var children = node.querySelectorAll(selector);
+    if (children.length) return children[0];
+    return;
+}
+function find_group(node) {
+    var parent = node.parentElement;
+    if (!parent) return;
+    if (parent.id == "frames") return node;
+    return find_group(parent);
+}
+function orig_save(e, attr, val) {
+    if (e.attributes["fg:orig_" + attr] != undefined) return;
+    if (e.attributes[attr] == undefined) return;
+    if (val == undefined) val = e.attributes[attr].value;
+    e.setAttribute("fg:orig_" + attr, val);
+}
+function orig_load(e, attr) {
+    if (e.attributes["fg:orig_"+attr] == undefined) return;
+    e.attributes[attr].value = e.attributes["fg:orig_" + attr].value;
+    e.removeAttribute("fg:orig_" + attr);
+}
+function g_to_text(e) {
+    var text = find_child(e, "title").firstChild.nodeValue;
+    return (text)
+}
+function g_to_func(e) {
+    var func = g_to_text(e);
+    // if there's any manipulation we want to do to the function
+    // name before it's searched, do it here before returning.
+    return (func);
+}
+function get_monospace_width(frames) {
+    // Given the id="frames" element, return the width of text characters if
+    // this is a monospace font, otherwise return 0.
+    text = find_child(frames.children[0], "text");
+    originalContent = text.textContent;
+    text.textContent = "!";
+    bangWidth = text.getComputedTextLength();
+    text.textContent = "W";
+    wWidth = text.getComputedTextLength();
+    text.textContent = originalContent;
+    if (bangWidth === wWidth) {
+        return bangWidth;
+    } else {
+        return 0;
+    }
+}
+function update_text_for_elements(elements) {
+    // In order to render quickly in the browser, you want to do one pass of
+    // reading attributes, and one pass of mutating attributes. See
+    // https://web.dev/avoid-large-complex-layouts-and-layout-thrashing/ for details.
+
+    // Fall back to inefficient calculation, if we're variable-width font.
+    // TODO This should be optimized somehow too.
+    if (known_font_width === 0) {
+        for (var i = 0; i < elements.length; i++) {
+            update_text(elements[i]);
+        }
+        return;
+    }
+
+    var textElemNewAttributes = [];
+    for (var i = 0; i < elements.length; i++) {
+        var e = elements[i];
+        var r = find_child(e, "rect");
+        var t = find_child(e, "text");
+        var w = parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 - 3;
+        var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+        var newX = format_percent((parseFloat(r.attributes.x.value) + (100 * 3 / frames.attributes.width.value)));
+
+        // Smaller than this size won't fit anything
+        if (w < 2 * known_font_width) {
+            textElemNewAttributes.push([newX, ""]);
+            continue;
+        }
+
+        // Fit in full text width
+        if (txt.length * known_font_width < w) {
+            textElemNewAttributes.push([newX, txt]);
+            continue;
+        }
+
+        var substringLength = Math.floor(w / known_font_width) - 2;
+        if (truncate_text_right) {
+            // Truncate the right side of the text.
+            textElemNewAttributes.push([newX, txt.substring(0, substringLength) + ".."]);
+            continue;
+        } else {
+            // Truncate the left side of the text.
+            textElemNewAttributes.push([newX, ".." + txt.substring(txt.length - substringLength, txt.length)]);
+            continue;
+        }
+    }
+
+    console.assert(textElemNewAttributes.length === elements.length, "Resize failed, please file a bug at https://github.com/jonhoo/inferno/");
+
+    // Now that we know new textContent, set it all in one go so we don't refresh a bazillion times.
+    for (var i = 0; i < elements.length; i++) {
+        var e = elements[i];
+        var values = textElemNewAttributes[i];
+        var t = find_child(e, "text");
+        t.attributes.x.value = values[0];
+        t.textContent = values[1];
+    }
+}
+
+function update_text(e) {
+    var r = find_child(e, "rect");
+    var t = find_child(e, "text");
+    var w = parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 - 3;
+    var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+    t.attributes.x.value = format_percent((parseFloat(r.attributes.x.value) + (100 * 3 / frames.attributes.width.value)));
+
+    // Smaller than this size won't fit anything
+    if (w < 2 * fontsize * fontwidth) {
+        t.textContent = "";
+        return;
+    }
+    t.textContent = txt;
+    // Fit in full text width
+    if (t.getComputedTextLength() < w)
+        return;
+    if (truncate_text_right) {
+        // Truncate the right side of the text.
+        for (var x = txt.length - 2; x > 0; x--) {
+            if (t.getSubStringLength(0, x + 2) <= w) {
+                t.textContent = txt.substring(0, x) + "..";
+                return;
+            }
+        }
+    } else {
+        // Truncate the left side of the text.
+        for (var x = 2; x < txt.length; x++) {
+            if (t.getSubStringLength(x - 2, txt.length) <= w) {
+                t.textContent = ".." + txt.substring(x, txt.length);
+                return;
+            }
+        }
+    }
+    t.textContent = "";
+}
+// zoom
+function zoom_reset(e) {
+    if (e.tagName == "rect") {
+        e.attributes.x.value = format_percent(100 * parseInt(e.attributes["fg:x"].value) / total_samples);
+        e.attributes.width.value = format_percent(100 * parseInt(e.attributes["fg:w"].value) / total_samples);
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_reset(c[i]);
+    }
+}
+function zoom_child(e, x, zoomed_width_samples) {
+    if (e.tagName == "text") {
+        var parent_x = parseFloat(find_child(e.parentNode, "rect[x]").attributes.x.value);
+        e.attributes.x.value = format_percent(parent_x + (100 * 3 / frames.attributes.width.value));
+    } else if (e.tagName == "rect") {
+        e.attributes.x.value = format_percent(100 * (parseInt(e.attributes["fg:x"].value) - x) / zoomed_width_samples);
+        e.attributes.width.value = format_percent(100 * parseInt(e.attributes["fg:w"].value) / zoomed_width_samples);
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_child(c[i], x, zoomed_width_samples);
+    }
+}
+function zoom_parent(e) {
+    if (e.attributes) {
+        if (e.attributes.x != undefined) {
+            e.attributes.x.value = "0.0%";
+        }
+        if (e.attributes.width != undefined) {
+            e.attributes.width.value = "100.0%";
+        }
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_parent(c[i]);
+    }
+}
+function zoom(node) {
+    var attr = find_child(node, "rect").attributes;
+    var width = parseInt(attr["fg:w"].value);
+    var xmin = parseInt(attr["fg:x"].value);
+    var xmax = xmin + width;
+    var ymin = parseFloat(attr.y.value);
+    unzoombtn.classList.remove("hide");
+    var el = frames.children;
+    var to_update_text = [];
+    for (var i = 0; i < el.length; i++) {
+        var e = el[i];
+        var a = find_child(e, "rect").attributes;
+        var ex = parseInt(a["fg:x"].value);
+        var ew = parseInt(a["fg:w"].value);
+        // Is it an ancestor
+        if (!inverted) {
+            var upstack = parseFloat(a.y.value) > ymin;
+        } else {
+            var upstack = parseFloat(a.y.value) < ymin;
+        }
+        if (upstack) {
+            // Direct ancestor
+            if (ex <= xmin && (ex+ew) >= xmax) {
+                e.classList.add("parent");
+                zoom_parent(e);
+                to_update_text.push(e);
+            }
+            // not in current path
+            else
+                e.classList.add("hide");
+        }
+        // Children maybe
+        else {
+            // no common path
+            if (ex < xmin || ex >= xmax) {
+                e.classList.add("hide");
+            }
+            else {
+                zoom_child(e, xmin, width);
+                to_update_text.push(e);
+            }
+        }
+    }
+    update_text_for_elements(to_update_text);
+}
+function unzoom() {
+    unzoombtn.classList.add("hide");
+    var el = frames.children;
+    for(var i = 0; i < el.length; i++) {
+        el[i].classList.remove("parent");
+        el[i].classList.remove("hide");
+        zoom_reset(el[i]);
+    }
+    update_text_for_elements(el);
+}
+// search
+function reset_search() {
+    var el = document.querySelectorAll("#frames rect");
+    for (var i = 0; i < el.length; i++) {
+        orig_load(el[i], "fill")
+    }
+    var params = get_params();
+    delete params.s;
+    history.replaceState(null, null, parse_params(params));
+}
+function search_prompt() {
+    if (!searching) {
+        var term = prompt("Enter a search term (regexp " +
+            "allowed, eg: ^ext4_)", "");
+        if (term != null) {
+            search(term)
+        }
+    } else {
+        reset_search();
+        searching = 0;
+        searchbtn.classList.remove("show");
+        searchbtn.firstChild.nodeValue = "Search"
+        matchedtxt.classList.add("hide");
+        matchedtxt.firstChild.nodeValue = ""
+    }
+}
+function search(term) {
+    var re = new RegExp(term);
+    var el = frames.children;
+    var matches = new Object();
+    var maxwidth = 0;
+    for (var i = 0; i < el.length; i++) {
+        var e = el[i];
+        // Skip over frames which are either not visible, or below the zoomed-to frame
+        if (e.classList.contains("hide") || e.classList.contains("parent")) {
+            continue;
+        }
+        var func = g_to_func(e);
+        var rect = find_child(e, "rect");
+        if (func == null || rect == null)
+            continue;
+        // Save max width. Only works as we have a root frame
+        var w = parseInt(rect.attributes["fg:w"].value);
+        if (w > maxwidth)
+            maxwidth = w;
+        if (func.match(re)) {
+            // highlight
+            var x = parseInt(rect.attributes["fg:x"].value);
+            orig_save(rect, "fill");
+            rect.attributes.fill.value = searchcolor;
+            // remember matches
+            if (matches[x] == undefined) {
+                matches[x] = w;
+            } else {
+                if (w > matches[x]) {
+                    // overwrite with parent
+                    matches[x] = w;
+                }
+            }
+            searching = 1;
+        }
+    }
+    if (!searching)
+        return;
+    var params = get_params();
+    params.s = term;
+    history.replaceState(null, null, parse_params(params));
+
+    searchbtn.classList.add("show");
+    searchbtn.firstChild.nodeValue = "Reset Search";
+    // calculate percent matched, excluding vertical overlap
+    var count = 0;
+    var lastx = -1;
+    var lastw = 0;
+    var keys = Array();
+    for (k in matches) {
+        if (matches.hasOwnProperty(k))
+            keys.push(k);
+    }
+    // sort the matched frames by their x location
+    // ascending, then width descending
+    keys.sort(function(a, b){
+        return a - b;
+    });
+    // Step through frames saving only the biggest bottom-up frames
+    // thanks to the sort order. This relies on the tree property
+    // where children are always smaller than their parents.
+    for (var k in keys) {
+        var x = parseInt(keys[k]);
+        var w = matches[keys[k]];
+        if (x >= lastx + lastw) {
+            count += w;
+            lastx = x;
+            lastw = w;
+        }
+    }
+    // display matched percent
+    matchedtxt.classList.remove("hide");
+    var pct = 100 * count / maxwidth;
+    if (pct != 100) pct = pct.toFixed(1);
+    matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+}
+function format_percent(n) {
+    return n.toFixed(4) + "%";
+}
+]]></script><rect x="0" y="0" width="100%" height="330" fill="url(#background)"/><text id="title" fill="rgb(0,0,0)" x="50.0000%" y="24.00">py-spy record --rate 100 --output profile_results/BareSimpleRaytrace_flamegraph.svg -- python3 BareSimpleRaytrace.py --width=199 --height=199 --loops=10</text><text id="details" fill="rgb(0,0,0)" x="10" y="40.00"> </text><text id="unzoom" class="hide" fill="rgb(0,0,0)" x="10" y="24.00">Reset Zoom</text><text id="search" fill="rgb(0,0,0)" x="1190" y="24.00">Search</text><text id="matched" fill="rgb(0,0,0)" x="1190" y="319.00"> </text><svg id="frames" x="10" width="1180" total_samples="4236"><g><title>__init__ (BareSimpleRaytrace.py:201) (8 samples, 0.19%)</title><rect x="0.0472%" y="100" width="0.1889%" height="15" fill="rgb(227,0,7)" fg:x="2" fg:w="8"/><text x="0.2972%" y="110.50"></text></g><g><title>bench_raytrace (BareSimpleRaytrace.py:369) (17 samples, 0.40%)</title><rect x="0.0472%" y="84" width="0.4013%" height="15" fill="rgb(217,0,24)" fg:x="2" fg:w="17"/><text x="0.2972%" y="94.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:203) (7 samples, 0.17%)</title><rect x="0.2833%" y="100" width="0.1653%" height="15" fill="rgb(221,193,54)" fg:x="12" fg:w="7"/><text x="0.5333%" y="110.50"></text></g><g><title>render (BareSimpleRaytrace.py:267) (29 samples, 0.68%)</title><rect x="0.4485%" y="100" width="0.6846%" height="15" fill="rgb(248,212,6)" fg:x="19" fg:w="29"/><text x="0.6985%" y="110.50"></text></g><g><title>scale (BareSimpleRaytrace.py:56) (19 samples, 0.45%)</title><rect x="0.6846%" y="116" width="0.4485%" height="15" fill="rgb(208,68,35)" fg:x="29" fg:w="19"/><text x="0.9346%" y="126.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:32) (7 samples, 0.17%)</title><rect x="1.9830%" y="132" width="0.1653%" height="15" fill="rgb(232,128,0)" fg:x="84" fg:w="7"/><text x="2.2330%" y="142.50"></text></g><g><title>render (BareSimpleRaytrace.py:268) (50 samples, 1.18%)</title><rect x="1.1331%" y="100" width="1.1804%" height="15" fill="rgb(207,160,47)" fg:x="48" fg:w="50"/><text x="1.3831%" y="110.50"></text></g><g><title>scale (BareSimpleRaytrace.py:56) (31 samples, 0.73%)</title><rect x="1.5817%" y="116" width="0.7318%" height="15" fill="rgb(228,23,34)" fg:x="67" fg:w="31"/><text x="1.8317%" y="126.50"></text></g><g><title>__add__ (BareSimpleRaytrace.py:46) (10 samples, 0.24%)</title><rect x="2.9745%" y="116" width="0.2361%" height="15" fill="rgb(218,30,26)" fg:x="126" fg:w="10"/><text x="3.2245%" y="126.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:32) (7 samples, 0.17%)</title><rect x="3.9188%" y="132" width="0.1653%" height="15" fill="rgb(220,122,19)" fg:x="166" fg:w="7"/><text x="4.1688%" y="142.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:33) (6 samples, 0.14%)</title><rect x="4.0840%" y="132" width="0.1416%" height="15" fill="rgb(250,228,42)" fg:x="173" fg:w="6"/><text x="4.3340%" y="142.50"></text></g><g><title>__add__ (BareSimpleRaytrace.py:49) (53 samples, 1.25%)</title><rect x="3.2106%" y="116" width="1.2512%" height="15" fill="rgb(240,193,28)" fg:x="136" fg:w="53"/><text x="3.4606%" y="126.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:34) (10 samples, 0.24%)</title><rect x="4.2257%" y="132" width="0.2361%" height="15" fill="rgb(216,20,37)" fg:x="179" fg:w="10"/><text x="4.4757%" y="142.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:185) (6 samples, 0.14%)</title><rect x="4.4618%" y="116" width="0.1416%" height="15" fill="rgb(206,188,39)" fg:x="189" fg:w="6"/><text x="4.7118%" y="126.50"></text></g><g><title>dot (BareSimpleRaytrace.py:59) (5 samples, 0.12%)</title><rect x="5.5949%" y="164" width="0.1180%" height="15" fill="rgb(217,207,13)" fg:x="237" fg:w="5"/><text x="5.8449%" y="174.50"></text></g><g><title>magnitude (BareSimpleRaytrace.py:43) (45 samples, 1.06%)</title><rect x="5.0755%" y="148" width="1.0623%" height="15" fill="rgb(231,73,38)" fg:x="215" fg:w="45"/><text x="5.3255%" y="158.50"></text></g><g><title>dot (BareSimpleRaytrace.py:60) (18 samples, 0.42%)</title><rect x="5.7129%" y="164" width="0.4249%" height="15" fill="rgb(225,20,46)" fg:x="242" fg:w="18"/><text x="5.9629%" y="174.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:32) (5 samples, 0.12%)</title><rect x="6.4684%" y="164" width="0.1180%" height="15" fill="rgb(210,31,41)" fg:x="274" fg:w="5"/><text x="6.7184%" y="174.50"></text></g><g><title>render (BareSimpleRaytrace.py:269) (187 samples, 4.41%)</title><rect x="2.3135%" y="100" width="4.4145%" height="15" fill="rgb(221,200,47)" fg:x="98" fg:w="187"/><text x="2.5635%" y="110.50">rende..</text></g><g><title>__init__ (BareSimpleRaytrace.py:186) (90 samples, 2.12%)</title><rect x="4.6034%" y="116" width="2.1246%" height="15" fill="rgb(226,26,5)" fg:x="195" fg:w="90"/><text x="4.8534%" y="126.50">_..</text></g><g><title>normalized (BareSimpleRaytrace.py:69) (81 samples, 1.91%)</title><rect x="4.8159%" y="132" width="1.9122%" height="15" fill="rgb(249,33,26)" fg:x="204" fg:w="81"/><text x="5.0659%" y="142.50">n..</text></g><g><title>scale (BareSimpleRaytrace.py:56) (25 samples, 0.59%)</title><rect x="6.1379%" y="148" width="0.5902%" height="15" fill="rgb(235,183,28)" fg:x="260" fg:w="25"/><text x="6.3879%" y="158.50"></text></g><g><title>rayColour (BareSimpleRaytrace.py:277) (9 samples, 0.21%)</title><rect x="7.2238%" y="116" width="0.2125%" height="15" fill="rgb(221,5,38)" fg:x="306" fg:w="9"/><text x="7.4738%" y="126.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:121) (37 samples, 0.87%)</title><rect x="11.8272%" y="164" width="0.8735%" height="15" fill="rgb(247,18,42)" fg:x="501" fg:w="37"/><text x="12.0772%" y="174.50"></text></g><g><title>isPoint (BareSimpleRaytrace.py:130) (9 samples, 0.21%)</title><rect x="12.4882%" y="180" width="0.2125%" height="15" fill="rgb(241,131,45)" fg:x="529" fg:w="9"/><text x="12.7382%" y="190.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:32) (22 samples, 0.52%)</title><rect x="15.7224%" y="180" width="0.5194%" height="15" fill="rgb(249,31,29)" fg:x="666" fg:w="22"/><text x="15.9724%" y="190.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:33) (12 samples, 0.28%)</title><rect x="16.2417%" y="180" width="0.2833%" height="15" fill="rgb(225,111,53)" fg:x="688" fg:w="12"/><text x="16.4917%" y="190.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:150) (266 samples, 6.28%)</title><rect x="10.6232%" y="148" width="6.2795%" height="15" fill="rgb(238,160,17)" fg:x="450" fg:w="266"/><text x="10.8732%" y="158.50">intersec..</text></g><g><title>__sub__ (BareSimpleRaytrace.py:122) (178 samples, 4.20%)</title><rect x="12.7007%" y="164" width="4.2021%" height="15" fill="rgb(214,148,48)" fg:x="538" fg:w="178"/><text x="12.9507%" y="174.50">__sub..</text></g><g><title>__init__ (BareSimpleRaytrace.py:34) (16 samples, 0.38%)</title><rect x="16.5250%" y="180" width="0.3777%" height="15" fill="rgb(232,36,49)" fg:x="700" fg:w="16"/><text x="16.7750%" y="190.50"></text></g><g><title>dot (BareSimpleRaytrace.py:59) (33 samples, 0.78%)</title><rect x="17.8234%" y="164" width="0.7790%" height="15" fill="rgb(209,103,24)" fg:x="755" fg:w="33"/><text x="18.0734%" y="174.50"></text></g><g><title>mustBeVector (BareSimpleRaytrace.py:84) (8 samples, 0.19%)</title><rect x="18.4136%" y="180" width="0.1889%" height="15" fill="rgb(229,88,8)" fg:x="780" fg:w="8"/><text x="18.6636%" y="190.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:151) (170 samples, 4.01%)</title><rect x="16.9027%" y="148" width="4.0132%" height="15" fill="rgb(213,181,19)" fg:x="716" fg:w="170"/><text x="17.1527%" y="158.50">inte..</text></g><g><title>dot (BareSimpleRaytrace.py:60) (98 samples, 2.31%)</title><rect x="18.6025%" y="164" width="2.3135%" height="15" fill="rgb(254,191,54)" fg:x="788" fg:w="98"/><text x="18.8525%" y="174.50">d..</text></g><g><title>dot (BareSimpleRaytrace.py:59) (37 samples, 0.87%)</title><rect x="22.5449%" y="164" width="0.8735%" height="15" fill="rgb(241,83,37)" fg:x="955" fg:w="37"/><text x="22.7949%" y="174.50"></text></g><g><title>mustBeVector (BareSimpleRaytrace.py:84) (8 samples, 0.19%)</title><rect x="23.2295%" y="180" width="0.1889%" height="15" fill="rgb(233,36,39)" fg:x="984" fg:w="8"/><text x="23.4795%" y="190.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:152) (203 samples, 4.79%)</title><rect x="20.9160%" y="148" width="4.7923%" height="15" fill="rgb(226,3,54)" fg:x="886" fg:w="203"/><text x="21.1660%" y="158.50">inters..</text></g><g><title>dot (BareSimpleRaytrace.py:60) (97 samples, 2.29%)</title><rect x="23.4183%" y="164" width="2.2899%" height="15" fill="rgb(245,192,40)" fg:x="992" fg:w="97"/><text x="23.6683%" y="174.50">d..</text></g><g><title>intersectionTime (BareSimpleRaytrace.py:153) (15 samples, 0.35%)</title><rect x="25.7082%" y="148" width="0.3541%" height="15" fill="rgb(238,167,29)" fg:x="1089" fg:w="15"/><text x="25.9582%" y="158.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:172) (28 samples, 0.66%)</title><rect x="26.1095%" y="148" width="0.6610%" height="15" fill="rgb(232,182,51)" fg:x="1106" fg:w="28"/><text x="26.3595%" y="158.50"></text></g><g><title>dot (BareSimpleRaytrace.py:60) (10 samples, 0.24%)</title><rect x="26.5345%" y="164" width="0.2361%" height="15" fill="rgb(231,60,39)" fg:x="1124" fg:w="10"/><text x="26.7845%" y="174.50"></text></g><g><title>&lt;listcomp&gt; (BareSimpleRaytrace.py:278) (813 samples, 19.19%)</title><rect x="7.7432%" y="132" width="19.1926%" height="15" fill="rgb(208,69,12)" fg:x="328" fg:w="813"/><text x="7.9932%" y="142.50">&lt;listcomp&gt; (BareSimpleRaytrace..</text></g><g><title>intersectionTime (BareSimpleRaytrace.py:174) (5 samples, 0.12%)</title><rect x="26.8178%" y="148" width="0.1180%" height="15" fill="rgb(235,93,37)" fg:x="1136" fg:w="5"/><text x="27.0678%" y="158.50"></text></g><g><title>rayColour (BareSimpleRaytrace.py:278) (830 samples, 19.59%)</title><rect x="7.4363%" y="116" width="19.5940%" height="15" fill="rgb(213,116,39)" fg:x="315" fg:w="830"/><text x="7.6863%" y="126.50">rayColour (BareSimpleRaytrace.p..</text></g><g><title>firstIntersection (BareSimpleRaytrace.py:223) (7 samples, 0.17%)</title><rect x="27.2663%" y="132" width="0.1653%" height="15" fill="rgb(222,207,29)" fg:x="1155" fg:w="7"/><text x="27.5163%" y="142.50"></text></g><g><title>firstIntersection (BareSimpleRaytrace.py:224) (12 samples, 0.28%)</title><rect x="27.4315%" y="132" width="0.2833%" height="15" fill="rgb(206,96,30)" fg:x="1162" fg:w="12"/><text x="27.6815%" y="142.50"></text></g><g><title>rayColour (BareSimpleRaytrace.py:280) (31 samples, 0.73%)</title><rect x="27.0538%" y="116" width="0.7318%" height="15" fill="rgb(218,138,4)" fg:x="1146" fg:w="31"/><text x="27.3038%" y="126.50"></text></g><g><title>__add__ (BareSimpleRaytrace.py:118) (8 samples, 0.19%)</title><rect x="28.1398%" y="148" width="0.1889%" height="15" fill="rgb(250,191,14)" fg:x="1192" fg:w="8"/><text x="28.3898%" y="158.50"></text></g><g><title>rayColour (BareSimpleRaytrace.py:285) (28 samples, 0.66%)</title><rect x="27.8565%" y="116" width="0.6610%" height="15" fill="rgb(239,60,40)" fg:x="1180" fg:w="28"/><text x="28.1065%" y="126.50"></text></g><g><title>pointAtTime (BareSimpleRaytrace.py:192) (22 samples, 0.52%)</title><rect x="27.9981%" y="132" width="0.5194%" height="15" fill="rgb(206,27,48)" fg:x="1186" fg:w="22"/><text x="28.2481%" y="142.50"></text></g><g><title>scale (BareSimpleRaytrace.py:56) (8 samples, 0.19%)</title><rect x="28.3286%" y="148" width="0.1889%" height="15" fill="rgb(225,35,8)" fg:x="1200" fg:w="8"/><text x="28.5786%" y="158.50"></text></g><g><title>baseColourAt (BareSimpleRaytrace.py:354) (11 samples, 0.26%)</title><rect x="28.7299%" y="148" width="0.2597%" height="15" fill="rgb(250,213,24)" fg:x="1217" fg:w="11"/><text x="28.9799%" y="158.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:122) (8 samples, 0.19%)</title><rect x="28.8008%" y="164" width="0.1889%" height="15" fill="rgb(247,123,22)" fg:x="1220" fg:w="8"/><text x="29.0508%" y="174.50"></text></g><g><title>baseColourAt (BareSimpleRaytrace.py:355) (7 samples, 0.17%)</title><rect x="28.9896%" y="148" width="0.1653%" height="15" fill="rgb(231,138,38)" fg:x="1228" fg:w="7"/><text x="29.2396%" y="158.50"></text></g><g><title>scale (BareSimpleRaytrace.py:56) (5 samples, 0.12%)</title><rect x="29.0368%" y="164" width="0.1180%" height="15" fill="rgb(231,145,46)" fg:x="1230" fg:w="5"/><text x="29.2868%" y="174.50"></text></g><g><title>baseColourAt (BareSimpleRaytrace.py:356) (6 samples, 0.14%)</title><rect x="29.1549%" y="148" width="0.1416%" height="15" fill="rgb(251,118,11)" fg:x="1235" fg:w="6"/><text x="29.4049%" y="158.50"></text></g><g><title>colourAt (BareSimpleRaytrace.py:323) (29 samples, 0.68%)</title><rect x="28.7299%" y="132" width="0.6846%" height="15" fill="rgb(217,147,25)" fg:x="1217" fg:w="29"/><text x="28.9799%" y="142.50"></text></g><g><title>magnitude (BareSimpleRaytrace.py:43) (14 samples, 0.33%)</title><rect x="29.8159%" y="180" width="0.3305%" height="15" fill="rgb(247,81,37)" fg:x="1263" fg:w="14"/><text x="30.0659%" y="190.50"></text></g><g><title>dot (BareSimpleRaytrace.py:60) (6 samples, 0.14%)</title><rect x="30.0047%" y="196" width="0.1416%" height="15" fill="rgb(209,12,38)" fg:x="1271" fg:w="6"/><text x="30.2547%" y="206.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:186) (30 samples, 0.71%)</title><rect x="29.5798%" y="148" width="0.7082%" height="15" fill="rgb(227,1,9)" fg:x="1253" fg:w="30"/><text x="29.8298%" y="158.50"></text></g><g><title>normalized (BareSimpleRaytrace.py:69) (24 samples, 0.57%)</title><rect x="29.7214%" y="164" width="0.5666%" height="15" fill="rgb(248,47,43)" fg:x="1259" fg:w="24"/><text x="29.9714%" y="174.50"></text></g><g><title>scale (BareSimpleRaytrace.py:56) (6 samples, 0.14%)</title><rect x="30.1464%" y="180" width="0.1416%" height="15" fill="rgb(221,10,30)" fg:x="1277" fg:w="6"/><text x="30.3964%" y="190.50"></text></g><g><title>dot (BareSimpleRaytrace.py:60) (5 samples, 0.12%)</title><rect x="30.4297%" y="164" width="0.1180%" height="15" fill="rgb(210,229,1)" fg:x="1289" fg:w="5"/><text x="30.6797%" y="174.50"></text></g><g><title>reflectThrough (BareSimpleRaytrace.py:90) (27 samples, 0.64%)</title><rect x="30.2880%" y="148" width="0.6374%" height="15" fill="rgb(222,148,37)" fg:x="1283" fg:w="27"/><text x="30.5380%" y="158.50"></text></g><g><title>scale (BareSimpleRaytrace.py:56) (16 samples, 0.38%)</title><rect x="30.5477%" y="164" width="0.3777%" height="15" fill="rgb(234,67,33)" fg:x="1294" fg:w="16"/><text x="30.7977%" y="174.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:34) (5 samples, 0.12%)</title><rect x="30.8074%" y="180" width="0.1180%" height="15" fill="rgb(247,98,35)" fg:x="1305" fg:w="5"/><text x="31.0574%" y="190.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:53) (11 samples, 0.26%)</title><rect x="31.2323%" y="164" width="0.2597%" height="15" fill="rgb(247,138,52)" fg:x="1323" fg:w="11"/><text x="31.4823%" y="174.50"></text></g><g><title>colourAt (BareSimpleRaytrace.py:327) (96 samples, 2.27%)</title><rect x="29.4854%" y="132" width="2.2663%" height="15" fill="rgb(213,79,30)" fg:x="1249" fg:w="96"/><text x="29.7354%" y="142.50">c..</text></g><g><title>reflectThrough (BareSimpleRaytrace.py:91) (35 samples, 0.83%)</title><rect x="30.9254%" y="148" width="0.8263%" height="15" fill="rgb(246,177,23)" fg:x="1310" fg:w="35"/><text x="31.1754%" y="158.50"></text></g><g><title>scale (BareSimpleRaytrace.py:56) (11 samples, 0.26%)</title><rect x="31.4920%" y="164" width="0.2597%" height="15" fill="rgb(230,62,27)" fg:x="1334" fg:w="11"/><text x="31.7420%" y="174.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:32) (5 samples, 0.12%)</title><rect x="31.6336%" y="180" width="0.1180%" height="15" fill="rgb(216,154,8)" fg:x="1340" fg:w="5"/><text x="31.8836%" y="190.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:121) (13 samples, 0.31%)</title><rect x="34.1124%" y="196" width="0.3069%" height="15" fill="rgb(244,35,45)" fg:x="1445" fg:w="13"/><text x="34.3624%" y="206.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:32) (11 samples, 0.26%)</title><rect x="35.6468%" y="212" width="0.2597%" height="15" fill="rgb(251,115,12)" fg:x="1510" fg:w="11"/><text x="35.8968%" y="222.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:33) (5 samples, 0.12%)</title><rect x="35.9065%" y="212" width="0.1180%" height="15" fill="rgb(240,54,50)" fg:x="1521" fg:w="5"/><text x="36.1565%" y="222.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:150) (116 samples, 2.74%)</title><rect x="33.4042%" y="180" width="2.7384%" height="15" fill="rgb(233,84,52)" fg:x="1415" fg:w="116"/><text x="33.6542%" y="190.50">in..</text></g><g><title>__sub__ (BareSimpleRaytrace.py:122) (73 samples, 1.72%)</title><rect x="34.4193%" y="196" width="1.7233%" height="15" fill="rgb(207,117,47)" fg:x="1458" fg:w="73"/><text x="34.6693%" y="206.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:34) (5 samples, 0.12%)</title><rect x="36.0246%" y="212" width="0.1180%" height="15" fill="rgb(249,43,39)" fg:x="1526" fg:w="5"/><text x="36.2746%" y="222.50"></text></g><g><title>dot (BareSimpleRaytrace.py:59) (17 samples, 0.40%)</title><rect x="36.7328%" y="196" width="0.4013%" height="15" fill="rgb(209,38,44)" fg:x="1556" fg:w="17"/><text x="36.9828%" y="206.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:151) (73 samples, 1.72%)</title><rect x="36.1426%" y="180" width="1.7233%" height="15" fill="rgb(236,212,23)" fg:x="1531" fg:w="73"/><text x="36.3926%" y="190.50"></text></g><g><title>dot (BareSimpleRaytrace.py:60) (31 samples, 0.73%)</title><rect x="37.1341%" y="196" width="0.7318%" height="15" fill="rgb(242,79,21)" fg:x="1573" fg:w="31"/><text x="37.3841%" y="206.50"></text></g><g><title>dot (BareSimpleRaytrace.py:59) (13 samples, 0.31%)</title><rect x="38.5269%" y="196" width="0.3069%" height="15" fill="rgb(211,96,35)" fg:x="1632" fg:w="13"/><text x="38.7769%" y="206.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:152) (78 samples, 1.84%)</title><rect x="37.8659%" y="180" width="1.8414%" height="15" fill="rgb(253,215,40)" fg:x="1604" fg:w="78"/><text x="38.1159%" y="190.50">i..</text></g><g><title>dot (BareSimpleRaytrace.py:60) (37 samples, 0.87%)</title><rect x="38.8338%" y="196" width="0.8735%" height="15" fill="rgb(211,81,21)" fg:x="1645" fg:w="37"/><text x="39.0838%" y="206.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:153) (8 samples, 0.19%)</title><rect x="39.7073%" y="180" width="0.1889%" height="15" fill="rgb(208,190,38)" fg:x="1682" fg:w="8"/><text x="39.9573%" y="190.50"></text></g><g><title>&lt;listcomp&gt; (BareSimpleRaytrace.py:278) (328 samples, 7.74%)</title><rect x="32.5071%" y="164" width="7.7432%" height="15" fill="rgb(235,213,38)" fg:x="1377" fg:w="328"/><text x="32.7571%" y="174.50">&lt;listcomp&gt; ..</text></g><g><title>intersectionTime (BareSimpleRaytrace.py:174) (6 samples, 0.14%)</title><rect x="40.1086%" y="180" width="0.1416%" height="15" fill="rgb(237,122,38)" fg:x="1699" fg:w="6"/><text x="40.3586%" y="190.50"></text></g><g><title>rayColour (BareSimpleRaytrace.py:278) (350 samples, 8.26%)</title><rect x="32.1058%" y="148" width="8.2625%" height="15" fill="rgb(244,218,35)" fg:x="1360" fg:w="350"/><text x="32.3558%" y="158.50">rayColour (B..</text></g><g><title>&lt;listcomp&gt; (BareSimpleRaytrace.py:279) (5 samples, 0.12%)</title><rect x="40.2502%" y="164" width="0.1180%" height="15" fill="rgb(240,68,47)" fg:x="1705" fg:w="5"/><text x="40.5002%" y="174.50"></text></g><g><title>rayColour (BareSimpleRaytrace.py:280) (10 samples, 0.24%)</title><rect x="40.4155%" y="148" width="0.2361%" height="15" fill="rgb(210,16,53)" fg:x="1712" fg:w="10"/><text x="40.6655%" y="158.50"></text></g><g><title>colourAt (BareSimpleRaytrace.py:323) (6 samples, 0.14%)</title><rect x="40.7460%" y="164" width="0.1416%" height="15" fill="rgb(235,124,12)" fg:x="1726" fg:w="6"/><text x="40.9960%" y="174.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:186) (7 samples, 0.17%)</title><rect x="40.9821%" y="180" width="0.1653%" height="15" fill="rgb(224,169,11)" fg:x="1736" fg:w="7"/><text x="41.2321%" y="190.50"></text></g><g><title>normalized (BareSimpleRaytrace.py:69) (6 samples, 0.14%)</title><rect x="41.0057%" y="196" width="0.1416%" height="15" fill="rgb(250,166,2)" fg:x="1737" fg:w="6"/><text x="41.2557%" y="206.50"></text></g><g><title>reflectThrough (BareSimpleRaytrace.py:90) (8 samples, 0.19%)</title><rect x="41.1473%" y="180" width="0.1889%" height="15" fill="rgb(242,216,29)" fg:x="1743" fg:w="8"/><text x="41.3973%" y="190.50"></text></g><g><title>scale (BareSimpleRaytrace.py:56) (5 samples, 0.12%)</title><rect x="41.2181%" y="196" width="0.1180%" height="15" fill="rgb(230,116,27)" fg:x="1746" fg:w="5"/><text x="41.4681%" y="206.50"></text></g><g><title>colourAt (BareSimpleRaytrace.py:327) (26 samples, 0.61%)</title><rect x="40.9112%" y="164" width="0.6138%" height="15" fill="rgb(228,99,48)" fg:x="1733" fg:w="26"/><text x="41.1612%" y="174.50"></text></g><g><title>reflectThrough (BareSimpleRaytrace.py:91) (8 samples, 0.19%)</title><rect x="41.3362%" y="180" width="0.1889%" height="15" fill="rgb(253,11,6)" fg:x="1751" fg:w="8"/><text x="41.5862%" y="190.50"></text></g><g><title>scale (BareSimpleRaytrace.py:56) (6 samples, 0.14%)</title><rect x="41.3834%" y="196" width="0.1416%" height="15" fill="rgb(247,143,39)" fg:x="1753" fg:w="6"/><text x="41.6334%" y="206.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:150) (28 samples, 0.66%)</title><rect x="41.7847%" y="212" width="0.6610%" height="15" fill="rgb(236,97,10)" fg:x="1770" fg:w="28"/><text x="42.0347%" y="222.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:122) (21 samples, 0.50%)</title><rect x="41.9500%" y="228" width="0.4958%" height="15" fill="rgb(233,208,19)" fg:x="1777" fg:w="21"/><text x="42.2000%" y="238.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:34) (6 samples, 0.14%)</title><rect x="42.3041%" y="244" width="0.1416%" height="15" fill="rgb(216,164,2)" fg:x="1792" fg:w="6"/><text x="42.5541%" y="254.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:151) (10 samples, 0.24%)</title><rect x="42.4457%" y="212" width="0.2361%" height="15" fill="rgb(220,129,5)" fg:x="1798" fg:w="10"/><text x="42.6957%" y="222.50"></text></g><g><title>dot (BareSimpleRaytrace.py:60) (7 samples, 0.17%)</title><rect x="42.5165%" y="228" width="0.1653%" height="15" fill="rgb(242,17,10)" fg:x="1801" fg:w="7"/><text x="42.7665%" y="238.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:152) (22 samples, 0.52%)</title><rect x="42.6818%" y="212" width="0.5194%" height="15" fill="rgb(242,107,0)" fg:x="1808" fg:w="22"/><text x="42.9318%" y="222.50"></text></g><g><title>dot (BareSimpleRaytrace.py:60) (7 samples, 0.17%)</title><rect x="43.0359%" y="228" width="0.1653%" height="15" fill="rgb(251,28,31)" fg:x="1823" fg:w="7"/><text x="43.2859%" y="238.50"></text></g><g><title>rayColour (BareSimpleRaytrace.py:278) (75 samples, 1.77%)</title><rect x="41.5958%" y="180" width="1.7705%" height="15" fill="rgb(233,223,10)" fg:x="1762" fg:w="75"/><text x="41.8458%" y="190.50">r..</text></g><g><title>&lt;listcomp&gt; (BareSimpleRaytrace.py:278) (75 samples, 1.77%)</title><rect x="41.5958%" y="196" width="1.7705%" height="15" fill="rgb(215,21,27)" fg:x="1762" fg:w="75"/><text x="41.8458%" y="206.50">&lt;..</text></g><g><title>rayColour (BareSimpleRaytrace.py:280) (6 samples, 0.14%)</title><rect x="43.3664%" y="180" width="0.1416%" height="15" fill="rgb(232,23,21)" fg:x="1837" fg:w="6"/><text x="43.6164%" y="190.50"></text></g><g><title>rayColour (BareSimpleRaytrace.py:285) (5 samples, 0.12%)</title><rect x="43.5080%" y="180" width="0.1180%" height="15" fill="rgb(244,5,23)" fg:x="1843" fg:w="5"/><text x="43.7580%" y="190.50"></text></g><g><title>pointAtTime (BareSimpleRaytrace.py:192) (5 samples, 0.12%)</title><rect x="43.5080%" y="196" width="0.1180%" height="15" fill="rgb(226,81,46)" fg:x="1843" fg:w="5"/><text x="43.7580%" y="206.50"></text></g><g><title>colourAt (BareSimpleRaytrace.py:323) (10 samples, 0.24%)</title><rect x="43.6261%" y="196" width="0.2361%" height="15" fill="rgb(247,70,30)" fg:x="1848" fg:w="10"/><text x="43.8761%" y="206.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:186) (6 samples, 0.14%)</title><rect x="43.9566%" y="212" width="0.1416%" height="15" fill="rgb(212,68,19)" fg:x="1862" fg:w="6"/><text x="44.2066%" y="222.50"></text></g><g><title>normalized (BareSimpleRaytrace.py:69) (6 samples, 0.14%)</title><rect x="43.9566%" y="228" width="0.1416%" height="15" fill="rgb(240,187,13)" fg:x="1862" fg:w="6"/><text x="44.2066%" y="238.50"></text></g><g><title>colourAt (BareSimpleRaytrace.py:327) (11 samples, 0.26%)</title><rect x="43.9093%" y="196" width="0.2597%" height="15" fill="rgb(223,113,26)" fg:x="1860" fg:w="11"/><text x="44.1593%" y="206.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:150) (13 samples, 0.31%)</title><rect x="44.2635%" y="244" width="0.3069%" height="15" fill="rgb(206,192,2)" fg:x="1875" fg:w="13"/><text x="44.5135%" y="254.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:122) (11 samples, 0.26%)</title><rect x="44.3107%" y="260" width="0.2597%" height="15" fill="rgb(241,108,4)" fg:x="1877" fg:w="11"/><text x="44.5607%" y="270.50"></text></g><g><title>rayColour (BareSimpleRaytrace.py:278) (26 samples, 0.61%)</title><rect x="44.2162%" y="212" width="0.6138%" height="15" fill="rgb(247,173,49)" fg:x="1873" fg:w="26"/><text x="44.4662%" y="222.50"></text></g><g><title>&lt;listcomp&gt; (BareSimpleRaytrace.py:278) (25 samples, 0.59%)</title><rect x="44.2398%" y="228" width="0.5902%" height="15" fill="rgb(224,114,35)" fg:x="1874" fg:w="25"/><text x="44.4898%" y="238.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:152) (7 samples, 0.17%)</title><rect x="44.6648%" y="244" width="0.1653%" height="15" fill="rgb(245,159,27)" fg:x="1892" fg:w="7"/><text x="44.9148%" y="254.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:186) (10 samples, 0.24%)</title><rect x="45.0189%" y="276" width="0.2361%" height="15" fill="rgb(245,172,44)" fg:x="1907" fg:w="10"/><text x="45.2689%" y="286.50"></text></g><g><title>normalized (BareSimpleRaytrace.py:69) (10 samples, 0.24%)</title><rect x="45.0189%" y="292" width="0.2361%" height="15" fill="rgb(236,23,11)" fg:x="1907" fg:w="10"/><text x="45.2689%" y="302.50"></text></g><g><title>colourAt (BareSimpleRaytrace.py:333) (26 samples, 0.61%)</title><rect x="44.9245%" y="228" width="0.6138%" height="15" fill="rgb(205,117,38)" fg:x="1903" fg:w="26"/><text x="45.1745%" y="238.50"></text></g><g><title>visibleLights (BareSimpleRaytrace.py:300) (26 samples, 0.61%)</title><rect x="44.9245%" y="244" width="0.6138%" height="15" fill="rgb(237,72,25)" fg:x="1903" fg:w="26"/><text x="45.1745%" y="254.50"></text></g><g><title>_lightIsVisible (BareSimpleRaytrace.py:292) (26 samples, 0.61%)</title><rect x="44.9245%" y="260" width="0.6138%" height="15" fill="rgb(244,70,9)" fg:x="1903" fg:w="26"/><text x="45.1745%" y="270.50"></text></g><g><title>colourAt (BareSimpleRaytrace.py:328) (60 samples, 1.42%)</title><rect x="44.1690%" y="196" width="1.4164%" height="15" fill="rgb(217,125,39)" fg:x="1871" fg:w="60"/><text x="44.4190%" y="206.50"></text></g><g><title>rayColour (BareSimpleRaytrace.py:286) (31 samples, 0.73%)</title><rect x="44.8536%" y="212" width="0.7318%" height="15" fill="rgb(235,36,10)" fg:x="1900" fg:w="31"/><text x="45.1036%" y="222.50"></text></g><g><title>dot (BareSimpleRaytrace.py:59) (6 samples, 0.14%)</title><rect x="46.4589%" y="292" width="0.1416%" height="15" fill="rgb(251,123,47)" fg:x="1968" fg:w="6"/><text x="46.7089%" y="302.50"></text></g><g><title>magnitude (BareSimpleRaytrace.py:43) (16 samples, 0.38%)</title><rect x="46.3645%" y="276" width="0.3777%" height="15" fill="rgb(221,13,13)" fg:x="1964" fg:w="16"/><text x="46.6145%" y="286.50"></text></g><g><title>dot (BareSimpleRaytrace.py:60) (6 samples, 0.14%)</title><rect x="46.6006%" y="292" width="0.1416%" height="15" fill="rgb(238,131,9)" fg:x="1974" fg:w="6"/><text x="46.8506%" y="302.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:186) (49 samples, 1.16%)</title><rect x="46.1992%" y="244" width="1.1568%" height="15" fill="rgb(211,50,8)" fg:x="1957" fg:w="49"/><text x="46.4492%" y="254.50"></text></g><g><title>normalized (BareSimpleRaytrace.py:69) (49 samples, 1.16%)</title><rect x="46.1992%" y="260" width="1.1568%" height="15" fill="rgb(245,182,24)" fg:x="1957" fg:w="49"/><text x="46.4492%" y="270.50"></text></g><g><title>scale (BareSimpleRaytrace.py:56) (26 samples, 0.61%)</title><rect x="46.7422%" y="276" width="0.6138%" height="15" fill="rgb(242,14,37)" fg:x="1980" fg:w="26"/><text x="46.9922%" y="286.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:34) (6 samples, 0.14%)</title><rect x="47.2144%" y="292" width="0.1416%" height="15" fill="rgb(246,228,12)" fg:x="2000" fg:w="6"/><text x="47.4644%" y="302.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:121) (5 samples, 0.12%)</title><rect x="47.3560%" y="244" width="0.1180%" height="15" fill="rgb(213,55,15)" fg:x="2006" fg:w="5"/><text x="47.6060%" y="254.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:33) (8 samples, 0.19%)</title><rect x="47.6629%" y="260" width="0.1889%" height="15" fill="rgb(209,9,3)" fg:x="2019" fg:w="8"/><text x="47.9129%" y="270.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:122) (21 samples, 0.50%)</title><rect x="47.4740%" y="244" width="0.4958%" height="15" fill="rgb(230,59,30)" fg:x="2011" fg:w="21"/><text x="47.7240%" y="254.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:34) (5 samples, 0.12%)</title><rect x="47.8517%" y="260" width="0.1180%" height="15" fill="rgb(209,121,21)" fg:x="2027" fg:w="5"/><text x="48.1017%" y="270.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:121) (5 samples, 0.12%)</title><rect x="48.0406%" y="260" width="0.1180%" height="15" fill="rgb(220,109,13)" fg:x="2035" fg:w="5"/><text x="48.2906%" y="270.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:150) (29 samples, 0.68%)</title><rect x="47.9698%" y="244" width="0.6846%" height="15" fill="rgb(232,18,1)" fg:x="2032" fg:w="29"/><text x="48.2198%" y="254.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:122) (21 samples, 0.50%)</title><rect x="48.1586%" y="260" width="0.4958%" height="15" fill="rgb(215,41,42)" fg:x="2040" fg:w="21"/><text x="48.4086%" y="270.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:151) (10 samples, 0.24%)</title><rect x="48.6544%" y="244" width="0.2361%" height="15" fill="rgb(224,123,36)" fg:x="2061" fg:w="10"/><text x="48.9044%" y="254.50"></text></g><g><title>dot (BareSimpleRaytrace.py:60) (6 samples, 0.14%)</title><rect x="48.7488%" y="260" width="0.1416%" height="15" fill="rgb(240,125,3)" fg:x="2065" fg:w="6"/><text x="48.9988%" y="270.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:152) (33 samples, 0.78%)</title><rect x="48.8905%" y="244" width="0.7790%" height="15" fill="rgb(205,98,50)" fg:x="2071" fg:w="33"/><text x="49.1405%" y="254.50"></text></g><g><title>dot (BareSimpleRaytrace.py:60) (15 samples, 0.35%)</title><rect x="49.3154%" y="260" width="0.3541%" height="15" fill="rgb(205,185,37)" fg:x="2089" fg:w="15"/><text x="49.5654%" y="270.50"></text></g><g><title>_lightIsVisible (BareSimpleRaytrace.py:292) (176 samples, 4.15%)</title><rect x="45.6327%" y="228" width="4.1549%" height="15" fill="rgb(238,207,15)" fg:x="1933" fg:w="176"/><text x="45.8827%" y="238.50">_ligh..</text></g><g><title>visibleLights (BareSimpleRaytrace.py:300) (177 samples, 4.18%)</title><rect x="45.6327%" y="212" width="4.1785%" height="15" fill="rgb(213,199,42)" fg:x="1933" fg:w="177"/><text x="45.8827%" y="222.50">visib..</text></g><g><title>colourAt (BareSimpleRaytrace.py:333) (181 samples, 4.27%)</title><rect x="45.6091%" y="196" width="4.2729%" height="15" fill="rgb(235,201,11)" fg:x="1932" fg:w="181"/><text x="45.8591%" y="206.50">colou..</text></g><g><title>colourAt (BareSimpleRaytrace.py:334) (9 samples, 0.21%)</title><rect x="49.8820%" y="196" width="0.2125%" height="15" fill="rgb(207,46,11)" fg:x="2113" fg:w="9"/><text x="50.1320%" y="206.50"></text></g><g><title>rayColour (BareSimpleRaytrace.py:286) (279 samples, 6.59%)</title><rect x="43.6261%" y="180" width="6.5864%" height="15" fill="rgb(241,35,35)" fg:x="1848" fg:w="279"/><text x="43.8761%" y="190.50">rayColour..</text></g><g><title>colourAt (BareSimpleRaytrace.py:328) (370 samples, 8.73%)</title><rect x="41.5250%" y="164" width="8.7347%" height="15" fill="rgb(243,32,47)" fg:x="1759" fg:w="370"/><text x="41.7750%" y="174.50">colourAt (Ba..</text></g><g><title>colourAt (BareSimpleRaytrace.py:329) (6 samples, 0.14%)</title><rect x="50.2597%" y="164" width="0.1416%" height="15" fill="rgb(247,202,23)" fg:x="2129" fg:w="6"/><text x="50.5097%" y="174.50"></text></g><g><title>addColours (BareSimpleRaytrace.py:306) (5 samples, 0.12%)</title><rect x="50.2833%" y="180" width="0.1180%" height="15" fill="rgb(219,102,11)" fg:x="2130" fg:w="5"/><text x="50.5333%" y="190.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:185) (5 samples, 0.12%)</title><rect x="51.4164%" y="212" width="0.1180%" height="15" fill="rgb(243,110,44)" fg:x="2178" fg:w="5"/><text x="51.6664%" y="222.50"></text></g><g><title>dot (BareSimpleRaytrace.py:59) (8 samples, 0.19%)</title><rect x="52.8093%" y="260" width="0.1889%" height="15" fill="rgb(222,74,54)" fg:x="2237" fg:w="8"/><text x="53.0593%" y="270.50"></text></g><g><title>magnitude (BareSimpleRaytrace.py:43) (46 samples, 1.09%)</title><rect x="52.3371%" y="244" width="1.0859%" height="15" fill="rgb(216,99,12)" fg:x="2217" fg:w="46"/><text x="52.5871%" y="254.50"></text></g><g><title>dot (BareSimpleRaytrace.py:60) (18 samples, 0.42%)</title><rect x="52.9981%" y="260" width="0.4249%" height="15" fill="rgb(226,22,26)" fg:x="2245" fg:w="18"/><text x="53.2481%" y="270.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:186) (111 samples, 2.62%)</title><rect x="51.5345%" y="212" width="2.6204%" height="15" fill="rgb(217,163,10)" fg:x="2183" fg:w="111"/><text x="51.7845%" y="222.50">__..</text></g><g><title>normalized (BareSimpleRaytrace.py:69) (106 samples, 2.50%)</title><rect x="51.6525%" y="228" width="2.5024%" height="15" fill="rgb(213,25,53)" fg:x="2188" fg:w="106"/><text x="51.9025%" y="238.50">no..</text></g><g><title>scale (BareSimpleRaytrace.py:56) (31 samples, 0.73%)</title><rect x="53.4230%" y="244" width="0.7318%" height="15" fill="rgb(252,105,26)" fg:x="2263" fg:w="31"/><text x="53.6730%" y="254.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:34) (7 samples, 0.17%)</title><rect x="53.9896%" y="260" width="0.1653%" height="15" fill="rgb(220,39,43)" fg:x="2287" fg:w="7"/><text x="54.2396%" y="270.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:121) (8 samples, 0.19%)</title><rect x="54.1549%" y="212" width="0.1889%" height="15" fill="rgb(229,68,48)" fg:x="2294" fg:w="8"/><text x="54.4049%" y="222.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:32) (6 samples, 0.14%)</title><rect x="55.2408%" y="228" width="0.1416%" height="15" fill="rgb(252,8,32)" fg:x="2340" fg:w="6"/><text x="55.4908%" y="238.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:122) (49 samples, 1.16%)</title><rect x="54.3437%" y="212" width="1.1568%" height="15" fill="rgb(223,20,43)" fg:x="2302" fg:w="49"/><text x="54.5937%" y="222.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:121) (7 samples, 0.17%)</title><rect x="55.7129%" y="228" width="0.1653%" height="15" fill="rgb(229,81,49)" fg:x="2360" fg:w="7"/><text x="55.9629%" y="238.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:32) (5 samples, 0.12%)</title><rect x="56.3739%" y="244" width="0.1180%" height="15" fill="rgb(236,28,36)" fg:x="2388" fg:w="5"/><text x="56.6239%" y="254.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:150) (45 samples, 1.06%)</title><rect x="55.5005%" y="212" width="1.0623%" height="15" fill="rgb(249,185,26)" fg:x="2351" fg:w="45"/><text x="55.7505%" y="222.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:122) (29 samples, 0.68%)</title><rect x="55.8782%" y="228" width="0.6846%" height="15" fill="rgb(249,174,33)" fg:x="2367" fg:w="29"/><text x="56.1282%" y="238.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:151) (34 samples, 0.80%)</title><rect x="56.5628%" y="212" width="0.8026%" height="15" fill="rgb(233,201,37)" fg:x="2396" fg:w="34"/><text x="56.8128%" y="222.50"></text></g><g><title>dot (BareSimpleRaytrace.py:60) (13 samples, 0.31%)</title><rect x="57.0585%" y="228" width="0.3069%" height="15" fill="rgb(221,78,26)" fg:x="2417" fg:w="13"/><text x="57.3085%" y="238.50"></text></g><g><title>dot (BareSimpleRaytrace.py:59) (6 samples, 0.14%)</title><rect x="57.6251%" y="228" width="0.1416%" height="15" fill="rgb(250,127,30)" fg:x="2441" fg:w="6"/><text x="57.8751%" y="238.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:152) (38 samples, 0.90%)</title><rect x="57.3654%" y="212" width="0.8971%" height="15" fill="rgb(230,49,44)" fg:x="2430" fg:w="38"/><text x="57.6154%" y="222.50"></text></g><g><title>dot (BareSimpleRaytrace.py:60) (21 samples, 0.50%)</title><rect x="57.7668%" y="228" width="0.4958%" height="15" fill="rgb(229,67,23)" fg:x="2447" fg:w="21"/><text x="58.0168%" y="238.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:153) (5 samples, 0.12%)</title><rect x="58.2625%" y="212" width="0.1180%" height="15" fill="rgb(249,83,47)" fg:x="2468" fg:w="5"/><text x="58.5125%" y="222.50"></text></g><g><title>colourAt (BareSimpleRaytrace.py:333) (343 samples, 8.10%)</title><rect x="50.4013%" y="164" width="8.0973%" height="15" fill="rgb(215,43,3)" fg:x="2135" fg:w="343"/><text x="50.6513%" y="174.50">colourAt (B..</text></g><g><title>visibleLights (BareSimpleRaytrace.py:300) (340 samples, 8.03%)</title><rect x="50.4721%" y="180" width="8.0264%" height="15" fill="rgb(238,154,13)" fg:x="2138" fg:w="340"/><text x="50.7221%" y="190.50">visibleLigh..</text></g><g><title>_lightIsVisible (BareSimpleRaytrace.py:292) (337 samples, 7.96%)</title><rect x="50.5430%" y="196" width="7.9556%" height="15" fill="rgb(219,56,2)" fg:x="2141" fg:w="337"/><text x="50.7930%" y="206.50">_lightIsVis..</text></g><g><title>magnitude (BareSimpleRaytrace.py:43) (11 samples, 0.26%)</title><rect x="58.8763%" y="196" width="0.2597%" height="15" fill="rgb(233,0,4)" fg:x="2494" fg:w="11"/><text x="59.1263%" y="206.50"></text></g><g><title>dot (BareSimpleRaytrace.py:60) (5 samples, 0.12%)</title><rect x="59.0179%" y="212" width="0.1180%" height="15" fill="rgb(235,30,7)" fg:x="2500" fg:w="5"/><text x="59.2679%" y="222.50"></text></g><g><title>colourAt (BareSimpleRaytrace.py:334) (30 samples, 0.71%)</title><rect x="58.4986%" y="164" width="0.7082%" height="15" fill="rgb(250,79,13)" fg:x="2478" fg:w="30"/><text x="58.7486%" y="174.50"></text></g><g><title>normalized (BareSimpleRaytrace.py:69) (20 samples, 0.47%)</title><rect x="58.7347%" y="180" width="0.4721%" height="15" fill="rgb(211,146,34)" fg:x="2488" fg:w="20"/><text x="58.9847%" y="190.50"></text></g><g><title>rayColour (BareSimpleRaytrace.py:286) (795 samples, 18.77%)</title><rect x="40.7224%" y="148" width="18.7677%" height="15" fill="rgb(228,22,38)" fg:x="1725" fg:w="795"/><text x="40.9724%" y="158.50">rayColour (BareSimpleRaytrace..</text></g><g><title>normalAt (BareSimpleRaytrace.py:159) (8 samples, 0.19%)</title><rect x="59.3012%" y="164" width="0.1889%" height="15" fill="rgb(235,168,5)" fg:x="2512" fg:w="8"/><text x="59.5512%" y="174.50"></text></g><g><title>colourAt (BareSimpleRaytrace.py:328) (1,180 samples, 27.86%)</title><rect x="31.7517%" y="132" width="27.8565%" height="15" fill="rgb(221,155,16)" fg:x="1345" fg:w="1180"/><text x="32.0017%" y="142.50">colourAt (BareSimpleRaytrace.py:328)</text></g><g><title>rayColour (BareSimpleRaytrace.py:288) (5 samples, 0.12%)</title><rect x="59.4901%" y="148" width="0.1180%" height="15" fill="rgb(215,215,53)" fg:x="2520" fg:w="5"/><text x="59.7401%" y="158.50"></text></g><g><title>addColours (BareSimpleRaytrace.py:306) (5 samples, 0.12%)</title><rect x="59.6789%" y="148" width="0.1180%" height="15" fill="rgb(223,4,10)" fg:x="2528" fg:w="5"/><text x="59.9289%" y="158.50"></text></g><g><title>colourAt (BareSimpleRaytrace.py:329) (13 samples, 0.31%)</title><rect x="59.6081%" y="132" width="0.3069%" height="15" fill="rgb(234,103,6)" fg:x="2525" fg:w="13"/><text x="59.8581%" y="142.50"></text></g><g><title>_lightIsVisible (BareSimpleRaytrace.py:291) (25 samples, 0.59%)</title><rect x="60.4816%" y="164" width="0.5902%" height="15" fill="rgb(227,97,0)" fg:x="2562" fg:w="25"/><text x="60.7316%" y="174.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:185) (27 samples, 0.64%)</title><rect x="65.2030%" y="180" width="0.6374%" height="15" fill="rgb(234,150,53)" fg:x="2762" fg:w="27"/><text x="65.4530%" y="190.50"></text></g><g><title>dot (BareSimpleRaytrace.py:59) (34 samples, 0.80%)</title><rect x="69.6648%" y="228" width="0.8026%" height="15" fill="rgb(228,201,54)" fg:x="2951" fg:w="34"/><text x="69.9148%" y="238.50"></text></g><g><title>magnitude (BareSimpleRaytrace.py:43) (183 samples, 4.32%)</title><rect x="67.8942%" y="212" width="4.3201%" height="15" fill="rgb(222,22,37)" fg:x="2876" fg:w="183"/><text x="68.1442%" y="222.50">magni..</text></g><g><title>dot (BareSimpleRaytrace.py:60) (74 samples, 1.75%)</title><rect x="70.4674%" y="228" width="1.7469%" height="15" fill="rgb(237,53,32)" fg:x="2985" fg:w="74"/><text x="70.7174%" y="238.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:32) (26 samples, 0.61%)</title><rect x="74.2918%" y="228" width="0.6138%" height="15" fill="rgb(233,25,53)" fg:x="3147" fg:w="26"/><text x="74.5418%" y="238.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:33) (23 samples, 0.54%)</title><rect x="74.9056%" y="228" width="0.5430%" height="15" fill="rgb(210,40,34)" fg:x="3173" fg:w="23"/><text x="75.1556%" y="238.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:186) (423 samples, 9.99%)</title><rect x="65.8404%" y="180" width="9.9858%" height="15" fill="rgb(241,220,44)" fg:x="2789" fg:w="423"/><text x="66.0904%" y="190.50">__init__ (Bare..</text></g><g><title>normalized (BareSimpleRaytrace.py:69) (375 samples, 8.85%)</title><rect x="66.9736%" y="196" width="8.8527%" height="15" fill="rgb(235,28,35)" fg:x="2837" fg:w="375"/><text x="67.2236%" y="206.50">normalized (B..</text></g><g><title>scale (BareSimpleRaytrace.py:56) (153 samples, 3.61%)</title><rect x="72.2144%" y="212" width="3.6119%" height="15" fill="rgb(210,56,17)" fg:x="3059" fg:w="153"/><text x="72.4644%" y="222.50">scal..</text></g><g><title>__init__ (BareSimpleRaytrace.py:34) (16 samples, 0.38%)</title><rect x="75.4485%" y="228" width="0.3777%" height="15" fill="rgb(224,130,29)" fg:x="3196" fg:w="16"/><text x="75.6985%" y="238.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:121) (38 samples, 0.90%)</title><rect x="75.8263%" y="180" width="0.8971%" height="15" fill="rgb(235,212,8)" fg:x="3212" fg:w="38"/><text x="76.0763%" y="190.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:32) (34 samples, 0.80%)</title><rect x="79.8159%" y="196" width="0.8026%" height="15" fill="rgb(223,33,50)" fg:x="3381" fg:w="34"/><text x="80.0659%" y="206.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:33) (13 samples, 0.31%)</title><rect x="80.6185%" y="196" width="0.3069%" height="15" fill="rgb(219,149,13)" fg:x="3415" fg:w="13"/><text x="80.8685%" y="206.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:122) (196 samples, 4.63%)</title><rect x="76.7233%" y="180" width="4.6270%" height="15" fill="rgb(250,156,29)" fg:x="3250" fg:w="196"/><text x="76.9733%" y="190.50">__sub..</text></g><g><title>__init__ (BareSimpleRaytrace.py:34) (18 samples, 0.42%)</title><rect x="80.9254%" y="196" width="0.4249%" height="15" fill="rgb(216,193,19)" fg:x="3428" fg:w="18"/><text x="81.1754%" y="206.50"></text></g><g><title>__sub__ (BareSimpleRaytrace.py:121) (37 samples, 0.87%)</title><rect x="82.3418%" y="196" width="0.8735%" height="15" fill="rgb(216,135,14)" fg:x="3488" fg:w="37"/><text x="82.5918%" y="206.50"></text></g><g><title>isPoint (BareSimpleRaytrace.py:130) (5 samples, 0.12%)</title><rect x="83.0973%" y="212" width="0.1180%" height="15" fill="rgb(241,47,5)" fg:x="3520" fg:w="5"/><text x="83.3473%" y="222.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:32) (19 samples, 0.45%)</title><rect x="85.1983%" y="212" width="0.4485%" height="15" fill="rgb(233,42,35)" fg:x="3609" fg:w="19"/><text x="85.4483%" y="222.50"></text></g><g><title>__init__ (BareSimpleRaytrace.py:33) (13 samples, 0.31%)</title><rect x="85.6468%" y="212" width="0.3069%" height="15" fill="rgb(231,13,6)" fg:x="3628" fg:w="13"/><text x="85.8968%" y="222.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:150) (208 samples, 4.91%)</title><rect x="81.3503%" y="180" width="4.9103%" height="15" fill="rgb(207,181,40)" fg:x="3446" fg:w="208"/><text x="81.6003%" y="190.50">inters..</text></g><g><title>__sub__ (BareSimpleRaytrace.py:122) (129 samples, 3.05%)</title><rect x="83.2153%" y="196" width="3.0453%" height="15" fill="rgb(254,173,49)" fg:x="3525" fg:w="129"/><text x="83.4653%" y="206.50">__s..</text></g><g><title>__init__ (BareSimpleRaytrace.py:34) (13 samples, 0.31%)</title><rect x="85.9537%" y="212" width="0.3069%" height="15" fill="rgb(221,1,38)" fg:x="3641" fg:w="13"/><text x="86.2037%" y="222.50"></text></g><g><title>dot (BareSimpleRaytrace.py:59) (29 samples, 0.68%)</title><rect x="86.9216%" y="196" width="0.6846%" height="15" fill="rgb(206,124,46)" fg:x="3682" fg:w="29"/><text x="87.1716%" y="206.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:151) (109 samples, 2.57%)</title><rect x="86.2606%" y="180" width="2.5732%" height="15" fill="rgb(249,21,11)" fg:x="3654" fg:w="109"/><text x="86.5106%" y="190.50">in..</text></g><g><title>dot (BareSimpleRaytrace.py:60) (52 samples, 1.23%)</title><rect x="87.6062%" y="196" width="1.2276%" height="15" fill="rgb(222,201,40)" fg:x="3711" fg:w="52"/><text x="87.8562%" y="206.50"></text></g><g><title>dot (BareSimpleRaytrace.py:59) (28 samples, 0.66%)</title><rect x="90.3919%" y="196" width="0.6610%" height="15" fill="rgb(235,61,29)" fg:x="3829" fg:w="28"/><text x="90.6419%" y="206.50"></text></g><g><title>mustBeVector (BareSimpleRaytrace.py:84) (9 samples, 0.21%)</title><rect x="90.8404%" y="212" width="0.2125%" height="15" fill="rgb(219,207,3)" fg:x="3848" fg:w="9"/><text x="91.0904%" y="222.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:152) (147 samples, 3.47%)</title><rect x="88.8338%" y="180" width="3.4703%" height="15" fill="rgb(222,56,46)" fg:x="3763" fg:w="147"/><text x="89.0838%" y="190.50">int..</text></g><g><title>dot (BareSimpleRaytrace.py:60) (53 samples, 1.25%)</title><rect x="91.0529%" y="196" width="1.2512%" height="15" fill="rgb(239,76,54)" fg:x="3857" fg:w="53"/><text x="91.3029%" y="206.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:153) (15 samples, 0.35%)</title><rect x="92.3041%" y="180" width="0.3541%" height="15" fill="rgb(231,124,27)" fg:x="3910" fg:w="15"/><text x="92.5541%" y="190.50"></text></g><g><title>dot (BareSimpleRaytrace.py:59) (5 samples, 0.12%)</title><rect x="93.0123%" y="196" width="0.1180%" height="15" fill="rgb(249,195,6)" fg:x="3940" fg:w="5"/><text x="93.2623%" y="206.50"></text></g><g><title>intersectionTime (BareSimpleRaytrace.py:172) (19 samples, 0.45%)</title><rect x="92.7998%" y="180" width="0.4485%" height="15" fill="rgb(237,174,47)" fg:x="3931" fg:w="19"/><text x="93.0498%" y="190.50"></text></g><g><title>dot (BareSimpleRaytrace.py:60) (5 samples, 0.12%)</title><rect x="93.1303%" y="196" width="0.1180%" height="15" fill="rgb(206,201,31)" fg:x="3945" fg:w="5"/><text x="93.3803%" y="206.50"></text></g><g><title>_lightIsVisible (BareSimpleRaytrace.py:292) (1,370 samples, 32.34%)</title><rect x="61.0718%" y="164" width="32.3418%" height="15" fill="rgb(231,57,52)" fg:x="2587" fg:w="1370"/><text x="61.3218%" y="174.50">_lightIsVisible (BareSimpleRaytrace.py:292)</text></g><g><title>_lightIsVisible (BareSimpleRaytrace.py:293) (14 samples, 0.33%)</title><rect x="93.4136%" y="164" width="0.3305%" height="15" fill="rgb(248,177,22)" fg:x="3957" fg:w="14"/><text x="93.6636%" y="174.50"></text></g><g><title>visibleLights (BareSimpleRaytrace.py:300) (1,424 samples, 33.62%)</title><rect x="60.1747%" y="148" width="33.6166%" height="15" fill="rgb(215,211,37)" fg:x="2549" fg:w="1424"/><text x="60.4247%" y="158.50">visibleLights (BareSimpleRaytrace.py:300)</text></g><g><title>colourAt (BareSimpleRaytrace.py:333) (1,440 samples, 33.99%)</title><rect x="59.9150%" y="132" width="33.9943%" height="15" fill="rgb(241,128,51)" fg:x="2538" fg:w="1440"/><text x="60.1650%" y="142.50">colourAt (BareSimpleRaytrace.py:333)</text></g><g><title>__sub__ (BareSimpleRaytrace.py:122) (25 samples, 0.59%)</title><rect x="94.2871%" y="148" width="0.5902%" height="15" fill="rgb(227,165,31)" fg:x="3994" fg:w="25"/><text x="94.5371%" y="158.50"></text></g><g><title>dot (BareSimpleRaytrace.py:60) (16 samples, 0.38%)</title><rect x="94.9481%" y="148" width="0.3777%" height="15" fill="rgb(228,167,24)" fg:x="4022" fg:w="16"/><text x="95.1981%" y="158.50"></text></g><g><title>magnitude (BareSimpleRaytrace.py:43) (12 samples, 0.28%)</title><rect x="95.4674%" y="164" width="0.2833%" height="15" fill="rgb(228,143,12)" fg:x="4044" fg:w="12"/><text x="95.7174%" y="174.50"></text></g><g><title>colourAt (BareSimpleRaytrace.py:334) (91 samples, 2.15%)</title><rect x="93.9093%" y="132" width="2.1483%" height="15" fill="rgb(249,149,8)" fg:x="3978" fg:w="91"/><text x="94.1593%" y="142.50">c..</text></g><g><title>normalized (BareSimpleRaytrace.py:69) (31 samples, 0.73%)</title><rect x="95.3258%" y="148" width="0.7318%" height="15" fill="rgb(243,35,44)" fg:x="4038" fg:w="31"/><text x="95.5758%" y="158.50"></text></g><g><title>scale (BareSimpleRaytrace.py:56) (13 samples, 0.31%)</title><rect x="95.7507%" y="164" width="0.3069%" height="15" fill="rgb(246,89,9)" fg:x="4056" fg:w="13"/><text x="96.0007%" y="174.50"></text></g><g><title>colourAt (BareSimpleRaytrace.py:337) (7 samples, 0.17%)</title><rect x="96.1756%" y="132" width="0.1653%" height="15" fill="rgb(233,213,13)" fg:x="4074" fg:w="7"/><text x="96.4256%" y="142.50"></text></g><g><title>colourAt (BareSimpleRaytrace.py:338) (5 samples, 0.12%)</title><rect x="96.3409%" y="132" width="0.1180%" height="15" fill="rgb(233,141,41)" fg:x="4081" fg:w="5"/><text x="96.5909%" y="142.50"></text></g><g><title>colourAt (BareSimpleRaytrace.py:341) (9 samples, 0.21%)</title><rect x="96.4825%" y="132" width="0.2125%" height="15" fill="rgb(239,167,4)" fg:x="4087" fg:w="9"/><text x="96.7325%" y="142.50"></text></g><g><title>rayColour (BareSimpleRaytrace.py:286) (2,897 samples, 68.39%)</title><rect x="28.5175%" y="116" width="68.3900%" height="15" fill="rgb(209,217,16)" fg:x="1208" fg:w="2897"/><text x="28.7675%" y="126.50">rayColour (BareSimpleRaytrace.py:286)</text></g><g><title>normalAt (BareSimpleRaytrace.py:159) (8 samples, 0.19%)</title><rect x="96.7186%" y="132" width="0.1889%" height="15" fill="rgb(219,88,35)" fg:x="4097" fg:w="8"/><text x="96.9686%" y="142.50"></text></g><g><title>normalized (BareSimpleRaytrace.py:69) (5 samples, 0.12%)</title><rect x="96.7894%" y="148" width="0.1180%" height="15" fill="rgb(220,193,23)" fg:x="4100" fg:w="5"/><text x="97.0394%" y="158.50"></text></g><g><title>render (BareSimpleRaytrace.py:270) (3,823 samples, 90.25%)</title><rect x="6.7280%" y="100" width="90.2502%" height="15" fill="rgb(230,90,52)" fg:x="285" fg:w="3823"/><text x="6.9780%" y="110.50">render (BareSimpleRaytrace.py:270)</text></g><g><title>plot (BareSimpleRaytrace.py:208) (23 samples, 0.54%)</title><rect x="97.4032%" y="116" width="0.5430%" height="15" fill="rgb(252,106,19)" fg:x="4126" fg:w="23"/><text x="97.6532%" y="126.50"></text></g><g><title>plot (BareSimpleRaytrace.py:209) (32 samples, 0.76%)</title><rect x="97.9462%" y="116" width="0.7554%" height="15" fill="rgb(206,74,20)" fg:x="4149" fg:w="32"/><text x="98.1962%" y="126.50"></text></g><g><title>plot (BareSimpleRaytrace.py:210) (34 samples, 0.80%)</title><rect x="98.7016%" y="116" width="0.8026%" height="15" fill="rgb(230,138,44)" fg:x="4181" fg:w="34"/><text x="98.9516%" y="126.50"></text></g><g><title>all (4,236 samples, 100%)</title><rect x="0.0000%" y="52" width="100.0000%" height="15" fill="rgb(235,182,43)" fg:x="0" fg:w="4236"/><text x="0.2500%" y="62.50"></text></g><g><title>&lt;module&gt; (BareSimpleRaytrace.py:404) (4,234 samples, 99.95%)</title><rect x="0.0472%" y="68" width="99.9528%" height="15" fill="rgb(242,16,51)" fg:x="2" fg:w="4234"/><text x="0.2972%" y="78.50">&lt;module&gt; (BareSimpleRaytrace.py:404)</text></g><g><title>bench_raytrace (BareSimpleRaytrace.py:381) (4,217 samples, 99.55%)</title><rect x="0.4485%" y="84" width="99.5515%" height="15" fill="rgb(248,9,4)" fg:x="19" fg:w="4217"/><text x="0.6985%" y="94.50">bench_raytrace (BareSimpleRaytrace.py:381)</text></g><g><title>render (BareSimpleRaytrace.py:271) (128 samples, 3.02%)</title><rect x="96.9783%" y="100" width="3.0217%" height="15" fill="rgb(210,31,22)" fg:x="4108" fg:w="128"/><text x="97.2283%" y="110.50">ren..</text></g><g><title>plot (BareSimpleRaytrace.py:211) (21 samples, 0.50%)</title><rect x="99.5042%" y="116" width="0.4958%" height="15" fill="rgb(239,54,39)" fg:x="4215" fg:w="21"/><text x="99.7542%" y="126.50"></text></g></svg></svg>

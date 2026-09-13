@@ -1,24 +1,24 @@
-# started on Sat Sep 12 20:30:05 2026
+# started on Sun Sep 13 12:35:38 2026
 
 
- Performance counter stats for 'python3 Praytrace.py --width=200 --height=200' (3 runs):
+ Performance counter stats for 'python3 Praytrace.py --width=199 --height=199' (3 runs):
 
-          18783.29 msec cpu-clock                 #    0.989 CPUs utilized            ( +-  0.04% )
-          18783.54 msec task-clock                #    0.989 CPUs utilized            ( +-  0.04% )
-       43001522110      cycles                    #    2.289 GHz                      ( +-  0.05% )  (75.15%)
-       84936897746      instructions              #    1.98  insn per cycle           ( +-  0.05% )  (87.44%)
-        9060703404      branch-instructions       #  482.329 M/sec                    ( +-  0.06% )  (87.64%)
-         104739979      branch-misses             #    1.15% of all branches          ( +-  0.14% )  (87.48%)
-        1547830536      bus-cycles                #   82.396 M/sec                    ( +-  0.02% )  (87.61%)
-         105248677      cache-references          #    5.603 M/sec                    ( +-  0.39% )  (87.58%)
-           1701561      cache-misses              #    1.629 % of all cache refs      ( +-  5.85% )  (50.10%)
-       42889220692      ref-cycles                #    2.283 G/sec                    ( +-  0.09% )  (62.70%)
-             79505      page-faults               #    4.232 K/sec                    ( +-  0.00% )
-             79505      minor-faults              #    4.232 K/sec                    ( +-  0.00% )
+          18625.59 msec cpu-clock                 #    0.977 CPUs utilized            ( +-  0.06% )
+          18625.89 msec task-clock                #    0.977 CPUs utilized            ( +-  0.06% )
+       42535425414      cycles                    #    2.284 GHz                      ( +-  0.00% )  (75.17%)
+       83928919723      instructions              #    1.97  insn per cycle           ( +-  0.02% )  (87.55%)
+        8976411217      branch-instructions       #  481.909 M/sec                    ( +-  0.02% )  (87.44%)
+         104130953      branch-misses             #    1.16% of all branches          ( +-  0.04% )  (87.52%)
+        1531648544      bus-cycles                #   82.228 M/sec                    ( +-  0.05% )  (87.53%)
+         111178150      cache-references          #    5.969 M/sec                    ( +-  0.60% )  (87.58%)
+           1562063      cache-misses              #    1.419 % of all cache refs      ( +-  1.87% )  (50.32%)
+       42428361400      ref-cycles                #    2.278 G/sec                    ( +-  0.03% )  (63.06%)
+             79502      page-faults               #    4.268 K/sec                    ( +-  0.00% )
+             79502      minor-faults              #    4.268 K/sec                    ( +-  0.00% )
                  0      major-faults              #    0.000 /sec                   
-              1800      context-switches          #   95.819 /sec                     ( +-  2.23% )
+              1891      context-switches          #  101.520 /sec                     ( +-  1.86% )
    <not supported>      LLC-loads                                                   
    <not supported>      LLC-stores                                                  
 
-           19.0007 +- 0.0778 seconds time elapsed  ( +-  0.41% )
+            19.059 +- 0.129 seconds time elapsed  ( +-  0.68% )
 

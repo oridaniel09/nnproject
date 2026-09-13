@@ -1,0 +1,24 @@
+# started on Sun Sep 13 12:39:10 2026
+
+
+ Performance counter stats for './bare_c_raytrace --width=199 --height=199 --loops=1' (50 runs):
+
+             48.45 msec cpu-clock                 #    0.982 CPUs utilized            ( +-  0.03% )
+             48.45 msec task-clock                #    0.982 CPUs utilized            ( +-  0.03% )
+          96078237      cycles                    #    1.986 GHz                      ( +-  0.41% )  (68.93%)
+         209108595      instructions              #    2.16  insn per cycle           ( +-  0.02% )  (83.64%)
+          17856362      branch-instructions       #  369.105 M/sec                    ( +-  0.70% )  (83.66%)
+             71000      branch-misses             #    0.40% of all branches          ( +-  0.19% )  (85.81%)
+           3729428      bus-cycles                #   77.090 M/sec                    ( +-  0.06% )  (91.79%)
+             43478      cache-references          #  898.724 K/sec                    ( +-  2.36% )  (91.86%)
+               198      cache-misses              #    0.438 % of all cache refs      ( +- 24.64% )  (46.88%)
+         101827337      ref-cycles                #    2.105 G/sec                    ( +-  0.29% )  (55.02%)
+               109      page-faults               #    2.253 K/sec                    ( +-  0.19% )
+               109      minor-faults              #    2.253 K/sec                    ( +-  0.19% )
+                 0      major-faults              #    0.000 /sec                   
+                 8      context-switches          #  165.366 /sec                     ( +-  1.90% )
+   <not supported>      LLC-loads                                                   
+   <not supported>      LLC-stores                                                  
+
+          0.049330 +- 0.000119 seconds time elapsed  ( +-  0.24% )
+

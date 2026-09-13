@@ -9,8 +9,8 @@ set -euo pipefail
 RUNS="${RUNS:-3}"
 
 # Image parameters chosen before each run
-IMG_WIDTH="${WIDTH:-200}"
-IMG_HEIGHT="${HEIGHT:-200}"
+IMG_WIDTH="${WIDTH:-199}"
+IMG_HEIGHT="${HEIGHT:-199}"
 
 # 2. The sampling rate of perf / py-spy
 # Minimal: 1 Hz
