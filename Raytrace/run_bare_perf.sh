@@ -11,8 +11,8 @@ C_RUNS="${C_RUNS:-50}"
 PY_RECORD_LOOPS="${PY_RECORD_LOOPS:-10}"
 C_RECORD_LOOPS="${C_RECORD_LOOPS:-50}"
 
-IMG_WIDTH="${WIDTH:-400}"
-IMG_HEIGHT="${HEIGHT:-400}"
+IMG_WIDTH="${WIDTH:-199}"
+IMG_HEIGHT="${HEIGHT:-199}"
 PYSPY_RATE="${RATE:-100}"
 EVENTS="cpu-clock,task-clock,cycles,instructions,branch-instructions,branch-misses,bus-cycles,cache-references,cache-misses,ref-cycles,page-faults,minor-faults,major-faults,context-switches,LLC-loads,LLC-stores"
 

@@ -1,24 +1,24 @@
-# started on Sat Sep 12 21:47:33 2026
+# started on Sun Sep 13 12:15:50 2026
 
 
- Performance counter stats for 'python3 simpleRaytrace.py --width=200 --height=200' (3 runs):
+ Performance counter stats for 'python3 simpleRaytrace.py --width=199 --height=199' (3 runs):
 
-         280440.43 msec cpu-clock                 #    0.999 CPUs utilized            ( +-  0.07% )
-         280441.06 msec task-clock                #    0.999 CPUs utilized            ( +-  0.07% )
-      648509316768      cycles                    #    2.315 GHz                      ( +-  0.09% )  (75.02%)
-     1702196374325      instructions              #    2.63  insn per cycle           ( +-  0.01% )  (87.50%)
-      281482302218      branch-instructions       #    1.005 G/sec                    ( +-  0.02% )  (87.51%)
-         890156119      branch-misses             #    0.32% of all branches          ( +-  0.77% )  (87.50%)
-       23270355125      bus-cycles                #   83.082 M/sec                    ( +-  0.08% )  (87.50%)
-         894811474      cache-references          #    3.195 M/sec                    ( +-  1.19% )  (87.50%)
-           3152185      cache-misses              #    0.361 % of all cache refs      ( +-  3.71% )  (50.03%)
-      647838770202      ref-cycles                #    2.313 G/sec                    ( +-  0.08% )  (62.54%)
-             89425      page-faults               #  319.272 /sec                     ( +-  0.01% )
-             89425      minor-faults              #  319.272 /sec                     ( +-  0.01% )
+         276591.87 msec cpu-clock                 #    0.999 CPUs utilized            ( +-  0.04% )
+         276592.55 msec task-clock                #    0.999 CPUs utilized            ( +-  0.04% )
+      639834350104      cycles                    #    2.315 GHz                      ( +-  0.05% )  (75.02%)
+     1680467360110      instructions              #    2.63  insn per cycle           ( +-  0.05% )  (87.51%)
+      277992782679      branch-instructions       #    1.006 G/sec                    ( +-  0.07% )  (87.50%)
+         874440341      branch-misses             #    0.31% of all branches          ( +-  0.10% )  (87.50%)
+       22962028614      bus-cycles                #   83.075 M/sec                    ( +-  0.05% )  (87.50%)
+         868723826      cache-references          #    3.143 M/sec                    ( +-  0.78% )  (87.51%)
+           2528856      cache-misses              #    0.292 % of all cache refs      ( +-  8.20% )  (50.03%)
+      639192503582      ref-cycles                #    2.313 G/sec                    ( +-  0.05% )  (62.54%)
+             89372      page-faults               #  323.340 /sec                     ( +-  0.01% )
+             89372      minor-faults              #  323.340 /sec                     ( +-  0.01% )
                  0      major-faults              #    0.000 /sec                   
-              3765      context-switches          #   13.442 /sec                     ( +-  5.42% )
+              3530      context-switches          #   12.771 /sec                     ( +-  0.90% )
    <not supported>      LLC-loads                                                   
    <not supported>      LLC-stores                                                  
 
-           280.755 +- 0.133 seconds time elapsed  ( +-  0.05% )
+          276.8246 +- 0.0817 seconds time elapsed  ( +-  0.03% )
 
