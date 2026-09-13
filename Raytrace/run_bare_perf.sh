@@ -4,16 +4,13 @@ set -euo pipefail
 # ==========================================
 # General Parameters
 # ==========================================
+PY_RUNS="${PY_RUNS:-3}"
+C_RUNS="${C_RUNS:-50}"
+RECORD_LOOPS="${RECORD_LOOPS:-50}"
 
-RUNS="${RUNS:-3}"
-LOOPS="${LOOPS:-1}"
 IMG_WIDTH="${WIDTH:-800}"
 IMG_HEIGHT="${HEIGHT:-800}"
-
-# Py-spy sampling rate (100Hz default to prevent QEMU lag/os error 10)
 PYSPY_RATE="${RATE:-100}"
-
-# Events list requested for profiling
 EVENTS="cpu-clock,task-clock,cycles,instructions,branch-instructions,branch-misses,bus-cycles,cache-references,cache-misses,ref-cycles,page-faults,minor-faults,major-faults,context-switches,LLC-loads,LLC-stores"
 
 RESULTS_DIR="profile_results"
@@ -34,16 +31,13 @@ echo "=========================================="
 PERF_OUT_PY="$RESULTS_DIR/BareSimpleRaytrace_perf_stat.txt"
 SVG_OUT_PY="$RESULTS_DIR/BareSimpleRaytrace_flamegraph.svg"
 
-echo "Running perf stat ($RUNS runs)..."
-perf stat -r "$RUNS" -e "$EVENTS" -o "$PERF_OUT_PY" \
-    -- python3 BareSimpleRaytrace.py --width="$IMG_WIDTH" --height="$IMG_HEIGHT" --loops="$LOOPS"
+echo "Running perf stat ($PY_RUNS runs for averaging)..."
+perf stat -r "$PY_RUNS" -e "$EVENTS" -o "$PERF_OUT_PY" \
+    -- python3 BareSimpleRaytrace.py --width="$IMG_WIDTH" --height="$IMG_HEIGHT" --loops=1
 
-echo "Generating py-spy Flame Graph at ${PYSPY_RATE}Hz..."
+echo "Generating py-spy Flame Graph (Internal loops: $RECORD_LOOPS)..."
 py-spy record --rate "$PYSPY_RATE" --output "$SVG_OUT_PY" \
-    -- python3 BareSimpleRaytrace.py --width="$IMG_WIDTH" --height="$IMG_HEIGHT" --loops="$LOOPS" || true
-
-echo "Saved $PERF_OUT_PY"
-echo "Saved $SVG_OUT_PY"
+    -- python3 BareSimpleRaytrace.py --width="$IMG_WIDTH" --height="$IMG_HEIGHT" --loops="$RECORD_LOOPS" || true
 
 # ==========================================
 # 3. Profile Native C Implementation
@@ -54,15 +48,10 @@ echo "=========================================="
 PERF_OUT_C="$RESULTS_DIR/BareCraytrace_perf_stat.txt"
 PERF_DATA_C="$RESULTS_DIR/BareCraytrace_perf.data"
 
-echo "Running perf stat ($RUNS runs)..."
-perf stat -r "$RUNS" -e "$EVENTS" -o "$PERF_OUT_C" \
-    -- ./bare_c_raytrace --width="$IMG_WIDTH" --height="$IMG_HEIGHT" --loops="$LOOPS"
+echo "Running perf stat ($C_RUNS runs for averaging)..."
+perf stat -r "$C_RUNS" -e "$EVENTS" -o "$PERF_OUT_C" \
+    -- ./bare_c_raytrace --width="$IMG_WIDTH" --height="$IMG_HEIGHT" --loops=1
 
-echo "Recording native C call stack (perf record)..."
-# perf record generates a perf.data file which can be converted to a flamegraph later
-perf record --call-graph fp -o "$PERF_DATA_C" \
-    -- ./bare_c_raytrace --width="$IMG_WIDTH" --height="$IMG_HEIGHT" --loops="$LOOPS"
-
-echo "Saved $PERF_OUT_C"
-echo "Saved $PERF_DATA_C"
-echo -e "\nNote: To generate a Flame Graph for the C binary, run: perf script -i $PERF_DATA_C | ./FlameGraph/stackcollapse-perf.pl | ./FlameGraph/flamegraph.pl > c_flamegraph.svg"
+echo "Recording native C call stack (Internal loops: $RECORD_LOOPS)..."
+perf record -e cpu-clock:u --call-graph fp -o "$PERF_DATA_C" \
+    -- ./bare_c_raytrace --width="$IMG_WIDTH" --height="$IMG_HEIGHT" --loops="$RECORD_LOOPS"s
