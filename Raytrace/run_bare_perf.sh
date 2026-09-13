@@ -6,7 +6,10 @@ set -euo pipefail
 # ==========================================
 PY_RUNS="${PY_RUNS:-3}"
 C_RUNS="${C_RUNS:-50}"
-RECORD_LOOPS="${RECORD_LOOPS:-50}"
+
+# Independent loop counts for flame graph sampling
+PY_RECORD_LOOPS="${PY_RECORD_LOOPS:-2}"
+C_RECORD_LOOPS="${C_RECORD_LOOPS:-50}"
 
 IMG_WIDTH="${WIDTH:-800}"
 IMG_HEIGHT="${HEIGHT:-800}"
@@ -35,9 +38,9 @@ echo "Running perf stat ($PY_RUNS runs for averaging)..."
 perf stat -r "$PY_RUNS" -e "$EVENTS" -o "$PERF_OUT_PY" \
     -- python3 BareSimpleRaytrace.py --width="$IMG_WIDTH" --height="$IMG_HEIGHT" --loops=1
 
-echo "Generating py-spy Flame Graph (Internal loops: $RECORD_LOOPS)..."
+echo "Generating py-spy Flame Graph (Internal loops: $PY_RECORD_LOOPS)..."
 py-spy record --rate "$PYSPY_RATE" --output "$SVG_OUT_PY" \
-    -- python3 BareSimpleRaytrace.py --width="$IMG_WIDTH" --height="$IMG_HEIGHT" --loops="$RECORD_LOOPS" || true
+    -- python3 BareSimpleRaytrace.py --width="$IMG_WIDTH" --height="$IMG_HEIGHT" --loops="$PY_RECORD_LOOPS" || true
 
 # ==========================================
 # 3. Profile Native C Implementation
@@ -52,6 +55,6 @@ echo "Running perf stat ($C_RUNS runs for averaging)..."
 perf stat -r "$C_RUNS" -e "$EVENTS" -o "$PERF_OUT_C" \
     -- ./bare_c_raytrace --width="$IMG_WIDTH" --height="$IMG_HEIGHT" --loops=1
 
-echo "Recording native C call stack (Internal loops: $RECORD_LOOPS)..."
+echo "Recording native C call stack (Internal loops: $C_RECORD_LOOPS)..."
 perf record -e cpu-clock:u --call-graph fp -o "$PERF_DATA_C" \
-    -- ./bare_c_raytrace --width="$IMG_WIDTH" --height="$IMG_HEIGHT" --loops="$RECORD_LOOPS"s
+    -- ./bare_c_raytrace --width="$IMG_WIDTH" --height="$IMG_HEIGHT" --loops="$C_RECORD_LOOPS"
