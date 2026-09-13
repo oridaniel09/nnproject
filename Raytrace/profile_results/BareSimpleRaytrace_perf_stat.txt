@@ -1,0 +1,24 @@
+# started on Sun Sep 13 11:42:42 2026
+
+
+ Performance counter stats for 'python3 BareSimpleRaytrace.py --width=400 --height=400 --loops=1' (3 runs):
+
+          13216.55 msec cpu-clock                 #    0.999 CPUs utilized            ( +-  0.07% )
+          13216.57 msec task-clock                #    0.999 CPUs utilized            ( +-  0.07% )
+       30581707110      cycles                    #    2.314 GHz                      ( +-  0.08% )  (74.95%)
+       80890954302      instructions              #    2.65  insn per cycle           ( +-  0.17% )  (87.48%)
+       13404920167      branch-instructions       #    1.014 G/sec                    ( +-  0.17% )  (87.53%)
+          37519024      branch-misses             #    0.28% of all branches          ( +-  0.31% )  (87.51%)
+        1097138925      bus-cycles                #   83.028 M/sec                    ( +-  0.09% )  (87.52%)
+          33201908      cache-references          #    2.513 M/sec                    ( +-  2.22% )  (87.51%)
+             27080      cache-misses              #    0.079 % of all cache refs      ( +- 60.83% )  (49.95%)
+       30550992813      ref-cycles                #    2.312 G/sec                    ( +-  0.09% )  (62.44%)
+              2728      page-faults               #  206.447 /sec                     ( +-  0.05% )
+              2728      minor-faults              #  206.447 /sec                     ( +-  0.05% )
+                 0      major-faults              #    0.000 /sec                   
+               105      context-switches          #    7.946 /sec                     ( +-  4.13% )
+   <not supported>      LLC-loads                                                   
+   <not supported>      LLC-stores                                                  
+
+           13.2296 +- 0.0107 seconds time elapsed  ( +-  0.08% )
+

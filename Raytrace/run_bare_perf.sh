@@ -8,11 +8,11 @@ PY_RUNS="${PY_RUNS:-3}"
 C_RUNS="${C_RUNS:-50}"
 
 # Independent loop counts for flame graph sampling
-PY_RECORD_LOOPS="${PY_RECORD_LOOPS:-2}"
+PY_RECORD_LOOPS="${PY_RECORD_LOOPS:-3}"
 C_RECORD_LOOPS="${C_RECORD_LOOPS:-50}"
 
-IMG_WIDTH="${WIDTH:-800}"
-IMG_HEIGHT="${HEIGHT:-800}"
+IMG_WIDTH="${WIDTH:-400}"
+IMG_HEIGHT="${HEIGHT:-400}"
 PYSPY_RATE="${RATE:-100}"
 EVENTS="cpu-clock,task-clock,cycles,instructions,branch-instructions,branch-misses,bus-cycles,cache-references,cache-misses,ref-cycles,page-faults,minor-faults,major-faults,context-switches,LLC-loads,LLC-stores"
 
