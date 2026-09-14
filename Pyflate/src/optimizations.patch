@@ -1,0 +1,98 @@
+--- run_benchmark.baseline.py	2026-09-09 13:41:15
++++ run_benchmark.py	2026-09-08 10:51:20
+@@ -176,6 +176,10 @@
+ 
+ class HuffmanTable(object):
+ 
++    # Set by build_decode_table(); None means the canonical fast path is
++    # unavailable and find_next_symbol() falls back to scanning self.table.
++    perm = None
++
+     def __init__(self, bootstrap):
+         l = []
+         start, bits = bootstrap[0]
+@@ -215,6 +219,27 @@
+             if x.bits > self.max_bits:
+                 self.max_bits = x.bits
+ 
++    def build_decode_table(self):
++        # Canonical-Huffman decode tables, in the shape the reference bzip2
++        # decoder uses.  populate_huffman_symbols() hands out codes in
++        # increasing (bits, code) order, so the codes of any one length are
++        # consecutive integers.  Therefore a peeked value v of `bits` bits is
++        # a complete code iff v <= limit[bits], and it then denotes the symbol
++        # perm[v - base[bits]].  This turns decoding into a walk over code
++        # lengths (~3-6 steps) instead of a linear scan of the whole table
++        # (up to 258 entries, each a Python attribute load).
++        limit = [-1] * (self.max_bits + 1)
++        base = [0] * (self.max_bits + 1)
++        perm = []
++        for index, x in enumerate(self.table):
++            perm.append(x.code)
++            if limit[x.bits] < 0:
++                base[x.bits] = x.symbol - index
++            limit[x.bits] = x.symbol
++        self.limit = limit
++        self.base = base
++        self.perm = perm
++
+     def _find_symbol(self, bits, symbol, table):
+         for h in table:
+             if h.bits == bits and h.reverse_symbol == symbol:
+@@ -222,6 +247,31 @@
+         return -1
+ 
+     def find_next_symbol(self, field, reversed=True):
++        if not reversed and self.perm is not None:
++            # bzip2 path.  Called once per decoded symbol, so the bitfield
++            # accessors are inlined here: readbits()/snoopbits() would add
++            # three Python calls and a _mask() allocation per length tried.
++            # field is an RBitfield, whose `bitfield` holds `bits` valid bits
++            # right-aligned, MSB of the stream first.
++            limit = self.limit
++            max_bits = self.max_bits
++            n = self.min_bits
++            if field.bits < n:
++                field.needbits(n)
++            v = (field.bitfield >> (field.bits - n)) & ((1 << n) - 1)
++            while v > limit[n]:
++                n += 1
++                if n > max_bits:
++                    raise Exception("unfound symbol, even after end of table @%r"
++                                    % (field.tell(),))
++                if field.bits < n:
++                    field.needbits(n)
++                v = (field.bitfield >> (field.bits - n)) & ((1 << n) - 1)
++            remaining = field.bits - n
++            field.bits = remaining
++            field.bitfield &= (1 << remaining) - 1
++            return self.perm[v - self.base[n]]
++
+         cached_length = -1
+         cached = None
+         for x in self.table:
+@@ -286,7 +336,15 @@
+ 
+ 
+ def move_to_front(l, c):
+-    l[:] = l[c:c + 1] + l[0:c] + l[c + 1:]
++    # Was:  l[:] = l[c:c + 1] + l[0:c] + l[c + 1:]
++    # which builds three slices, concatenates them into a fourth list and
++    # copies that back over l -- four O(n) passes and four allocations per
++    # call, on a ~150 entry list called ~90k times per decompression.
++    # pop()+insert() do the same rotation as two C-level memmoves with no
++    # intermediate objects, and c == 0 (the case MTF is designed to make
++    # common) becomes free.
++    if c:
++        l.insert(0, l.pop(c))
+ 
+ 
+ def bwt_transform(L):
+@@ -387,6 +445,7 @@
+         codes = OrderedHuffmanTable(g)
+         codes.populate_huffman_symbols()
+         codes.min_max_bits()
++        codes.build_decode_table()
+         tables.append(codes)
+     return tables
+ 
