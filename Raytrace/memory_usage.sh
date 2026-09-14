@@ -4,8 +4,8 @@ set -euo pipefail
 # ==========================================
 # General Parameters
 # ==========================================
-IMG_WIDTH="${WIDTH:-800}"
-IMG_HEIGHT="${HEIGHT:-800}"
+IMG_WIDTH="${WIDTH:-200}"
+IMG_HEIGHT="${HEIGHT:-200}"
 
 RESULTS_DIR="memory_results"
 mkdir -p "$RESULTS_DIR"
