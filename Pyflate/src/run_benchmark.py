@@ -340,9 +340,10 @@ def move_to_front(l, c):
     # which builds three slices, concatenates them into a fourth list and
     # copies that back over l -- four O(n) passes and four allocations per
     # call, on a ~150 entry list called ~90k times per decompression.
-    # pop()+insert() do the same rotation as two C-level memmoves with no
-    # intermediate objects, and c == 0 (the case MTF is designed to make
-    # common) becomes free.
+    # pop()+insert() are list methods implemented in C: each shifts the
+    # affected slots one position within the existing array (pop via memmove,
+    # insert via a pointer loop) and allocates nothing.  c == 0 -- the repeat
+    # case MTF exists to make common -- becomes free.
     if c:
         l.insert(0, l.pop(c))
 

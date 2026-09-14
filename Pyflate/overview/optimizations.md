@@ -40,13 +40,20 @@ for x in self.table:
         return x.code
 ```
 
-`self.table` holds up to 258 `HuffmanLength` objects. Each iteration is a
-Python loop step plus two or three attribute loads on a `__dict__`-backed
-object, and each new code length costs a `snoopbits()` call which itself calls
-`needbits()` and `_mask()`. The scan is O(number of symbols), so the *frequent*
-symbols — the short codes Huffman exists to make cheap — are the only ones that
-are cheap, and everything else pays a walk over the table. This is called once
-per decoded symbol, ~22,800 instructions per symbol in the baseline.
+Measured on the benchmark's own input (`scan_stats.py`, raw output in
+`scan_stats.txt`): 148,271 symbols are decoded per decompression against a
+147-entry table with code lengths 2..15. The scan walks a mean of **6.0 table
+entries** per symbol (median 3, p90 14, worst case all 147), and peeks the
+bitstream a mean of **2.30 times** — once per distinct code length it reaches.
+
+So the cost per symbol is two things stacked:
+
+1. ~6 Python loop iterations, each with two or three attribute loads on a
+   `__dict__`-backed `HuffmanLength` object.
+2. ~2.3 `snoopbits()` calls plus a final `readbits()` — and each of those is
+   itself 2-3 Python calls, because `snoopbits()` calls `needbits()` and
+   `_mask()`. That is roughly **9 Python function calls per decoded symbol**,
+   and it is the larger of the two costs.
 
 **The fix.** bzip2's Huffman codes are *canonical*:
 `populate_huffman_symbols()` hands out codes in increasing `(bits, code)`
@@ -58,12 +65,31 @@ length-indexed test sufficient — the shape the reference C bzip2 decoder uses:
 - `perm[]`   — symbols in canonical order
 
 Decoding becomes: peek `min_bits`, and while the peeked value exceeds
-`limit[n]`, take one more bit. That is a walk over *code lengths* (~3-6 steps
-for this data) instead of over the symbol table (up to 258 entries).
+`limit[n]`, take one more bit. That is a walk over *code lengths* — a measured
+mean of 2.30 iterations, with 48% of symbols resolved on the very first peek —
+instead of a 6.0-entry walk over the symbol table.
 
-The bit accessors are inlined into the loop rather than called. `readbits()` /
-`snoopbits()` would add three Python calls and a `_mask()` allocation per
-length tried, which on a 3-6 iteration loop is most of the remaining cost.
+Worked example, using a real table from the input (lengths 2..15):
+
+| len | codes | `limit` | `base` |
+|---|---|---|---|
+| 2 | 3 | 2 | 0 |
+| 3 | 0 | -1 | 0 |
+| 4 | 1 | 12 | 9 |
+| 5 | 2 | 27 | 22 |
+| ... | | | |
+
+Peek 2 bits. If `v <= 2` the symbol is `perm[v - 0]` and we are done — that is
+the 48% case. Otherwise `v == 3`; length 3 has no codes so `limit[3] == -1`
+rejects everything and we take another bit. At 4 bits `v` is in 12..15, and
+`v <= 12` gives `perm[12 - 9] == perm[3]`.
+
+The bit accessors are inlined into the loop rather than called, which is where
+most of the win actually comes from. The new loop peeks the same ~2.3 times per
+symbol as the old one did — but as inline shift-and-mask arithmetic instead of
+`snoopbits()` -> `needbits()` + `_mask()`. The profile confirms it:
+`snoopbits`, `readbits` and `_mask` together fall from 25.06% of runtime to
+0.65%.
 
 The fast path is guarded by `not reversed and self.perm is not None`. The
 gzip/DEFLATE path uses `reversed=True` (bit-reversed codes, which are not

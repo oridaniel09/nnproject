@@ -43,3 +43,6 @@
     @copilot resolve the merge conflicts in this pull request
 28. currently, I want to actually make the changes. look in my presentation, I explained
     the two software areas I want to improve
+29. what are the current files that are changed?
+30. what are these new python files? what do they do?
+31. commit them, then rebase from main. and then push my changes

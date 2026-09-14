@@ -1,0 +1,44 @@
+decoded symbols                : 148271
+mean table size                : 147.0 entries
+max table size                 : 147 entries
+
+BASELINE  table entries scanned per symbol:
+  mean 6.0   median 3   p90 14   max 147
+
+OPTIMIZED code lengths tried per symbol (== loop iterations):
+  mean 2.30   median 2   p90 5   max 14
+
+  ratio (entries walked / lengths tried) = 2.6x
+
+distribution of lengths tried:
+   1 steps :  71320 symbols (48.10%)
+   2 steps :  35145 symbols (23.70%)
+   3 steps :  15375 symbols (10.37%)
+   4 steps :   8476 symbols ( 5.72%)
+   5 steps :   5193 symbols ( 3.50%)
+   6 steps :   5400 symbols ( 3.64%)
+   7 steps :   2714 symbols ( 1.83%)
+   8 steps :   1976 symbols ( 1.33%)
+   9 steps :   1220 symbols ( 0.82%)
+  10 steps :    639 symbols ( 0.43%)
+  11 steps :    487 symbols ( 0.33%)
+  12 steps :    200 symbols ( 0.13%)
+  13 steps :    100 symbols ( 0.07%)
+  14 steps :     26 symbols ( 0.02%)
+
+=== one real Huffman group: 147 symbols, code lengths 2..15 ===
+len : count : limit[len] : base[len]
+  2 :     3 :          2 :         0
+  3 :     0 :         -1 :         0
+  4 :     1 :         12 :         9
+  5 :     2 :         27 :        22
+  6 :     1 :         56 :        50
+  7 :     4 :        117 :       107
+  8 :     9 :        244 :       225
+  9 :     9 :        498 :       470
+ 10 :     9 :       1006 :       969
+ 11 :    15 :       2028 :      1976
+ 12 :    15 :       4072 :      4005
+ 13 :    31 :       8176 :      8078
+ 14 :    12 :      16365 :     16255
+ 15 :    36 :      32767 :     32621
