@@ -1,0 +1,4 @@
+# BareSimpleRaytrace.py hotspots
+# generated 2026-09-14T13:06:13Z from BareSimpleRaytrace.folded
+
+===== SELF TIME (leaf frame — where the CPU actually is) =====
