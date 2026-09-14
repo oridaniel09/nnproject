@@ -1,24 +1,24 @@
-# started on Sun Sep 13 11:44:13 2026
+# started on Sun Sep 13 12:39:10 2026
 
 
- Performance counter stats for './bare_c_raytrace --width=400 --height=400 --loops=1' (50 runs):
+ Performance counter stats for './bare_c_raytrace --width=199 --height=199 --loops=1' (50 runs):
 
-            176.83 msec cpu-clock                 #    0.964 CPUs utilized            ( +-  0.06% )
-            176.83 msec task-clock                #    0.965 CPUs utilized            ( +-  0.06% )
-         394312433      cycles                    #    2.225 GHz                      ( +-  0.08% )  (73.99%)
-         865232963      instructions              #    2.19  insn per cycle           ( +-  0.01% )  (86.47%)
-          72092760      branch-instructions       #  406.851 M/sec                    ( +-  0.17% )  (86.47%)
-            238343      branch-misses             #    0.33% of all branches          ( +-  0.15% )  (86.47%)
-          14407056      bus-cycles                #   81.305 M/sec                    ( +-  0.07% )  (88.46%)
-             71307      cache-references          #  402.417 K/sec                    ( +-  1.34% )  (88.73%)
-               663      cache-misses              #    0.926 % of all cache refs      ( +- 13.54% )  (49.87%)
-         399463990      ref-cycles                #    2.254 G/sec                    ( +-  0.08% )  (61.14%)
-               201      page-faults               #    1.134 K/sec                    ( +-  0.09% )
-               201      minor-faults              #    1.134 K/sec                    ( +-  0.09% )
+             48.45 msec cpu-clock                 #    0.982 CPUs utilized            ( +-  0.03% )
+             48.45 msec task-clock                #    0.982 CPUs utilized            ( +-  0.03% )
+          96078237      cycles                    #    1.986 GHz                      ( +-  0.41% )  (68.93%)
+         209108595      instructions              #    2.16  insn per cycle           ( +-  0.02% )  (83.64%)
+          17856362      branch-instructions       #  369.105 M/sec                    ( +-  0.70% )  (83.66%)
+             71000      branch-misses             #    0.40% of all branches          ( +-  0.19% )  (85.81%)
+           3729428      bus-cycles                #   77.090 M/sec                    ( +-  0.06% )  (91.79%)
+             43478      cache-references          #  898.724 K/sec                    ( +-  2.36% )  (91.86%)
+               198      cache-misses              #    0.438 % of all cache refs      ( +- 24.64% )  (46.88%)
+         101827337      ref-cycles                #    2.105 G/sec                    ( +-  0.29% )  (55.02%)
+               109      page-faults               #    2.253 K/sec                    ( +-  0.19% )
+               109      minor-faults              #    2.253 K/sec                    ( +-  0.19% )
                  0      major-faults              #    0.000 /sec                   
-                 9      context-switches          #   50.791 /sec                     ( +-  2.03% )
+                 8      context-switches          #  165.366 /sec                     ( +-  1.90% )
    <not supported>      LLC-loads                                                   
    <not supported>      LLC-stores                                                  
 
-           0.18334 +- 0.00498 seconds time elapsed  ( +-  2.72% )
+          0.049330 +- 0.000119 seconds time elapsed  ( +-  0.24% )
 
