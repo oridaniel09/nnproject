@@ -18,18 +18,17 @@ for TARGET in "BareSimpleRaytrace.py" "simpleRaytrace.py"; do
         EXTRA_ARGS="--loops=2"
     fi
 
-    # Record the call stack with debug symbols enabled (-g)
-    # Note: Change 'python3' to 'python3-dbg' if you need the exact CPython allocator internal symbols (like _pymalloc_pool_extend) shown in your reference image.
-    perf record -F "$RATE" -g -o "$PERF_DATA" \
-        -- python3 "$TARGET" --width="$IMG_WIDTH" --height="$IMG_HEIGHT" $EXTRA_ARGS
-
-    # Export the hierarchical call tree report to a text file
-    perf report -i "$PERF_DATA" --stdio > "$REPORT_OUT"
-
     echo -e "\n=========================================="
-    echo " Saved $TARGET hierarchy to $REPORT_OUT "
+    echo " Recording: $TARGET"
     echo "=========================================="
 
-    # Print the top 35 lines to terminal to immediately replicate the image view
-    head -n 35 "$REPORT_OUT"
+    # -e cpu-clock:u uses software timer interrupts and restricts to user space
+    perf record -e cpu-clock:u -F "$RATE" -g -o "$PERF_DATA" \
+        -- python3 "$TARGET" --width="$IMG_WIDTH" --height="$IMG_HEIGHT" $EXTRA_ARGS
+
+    # Export hierarchical call tree matching standard stdio view
+    perf report -i "$PERF_DATA" --stdio > "$REPORT_OUT"
+
+    echo "Saved $TARGET hierarchy to $REPORT_OUT"
+    head -n 40 "$REPORT_OUT"
 done
