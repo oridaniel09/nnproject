@@ -1,66 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ==========================================
-# Parameters
-# ==========================================
 IMG_WIDTH="${WIDTH:-800}"
 IMG_HEIGHT="${HEIGHT:-800}"
-PYSPY_RATE="${RATE:-100}"
+RATE="${RATE:-999}"
 
-RESULTS_DIR="callstack_results"
+RESULTS_DIR="perf_stdio_results"
 mkdir -p "$RESULTS_DIR"
 
-# ==========================================
-# Generate and Process Stacks
-# ==========================================
 for TARGET in "BareSimpleRaytrace.py" "simpleRaytrace.py"; do
-    echo -e "\n=========================================="
-    echo " Profiling Callstack: $TARGET"
-    echo "=========================================="
-
-    # Strip the .py extension for cleaner filenames
     BASENAME="${TARGET%.*}"
-    FOLDED="$RESULTS_DIR/${BASENAME}.folded"
-    HOT="$RESULTS_DIR/${BASENAME}_hotspots.txt"
+    PERF_DATA="$RESULTS_DIR/${BASENAME}_perf.data"
+    REPORT_OUT="$RESULTS_DIR/${BASENAME}_report.txt"
 
-    echo "Generating raw folded stacks with py-spy..."
-
-    # Optional loops argument specifically for the bare implementation
     EXTRA_ARGS=""
     if [[ "$TARGET" == "BareSimpleRaytrace.py" ]]; then
         EXTRA_ARGS="--loops=2"
     fi
 
-    py-spy record --rate "$PYSPY_RATE" --format raw --output "$FOLDED" \
-        -- python3 "$TARGET" --width="$IMG_WIDTH" --height="$IMG_HEIGHT" $EXTRA_ARGS || true
+    # Record the call stack with debug symbols enabled (-g)
+    # Note: Change 'python3' to 'python3-dbg' if you need the exact CPython allocator internal symbols (like _pymalloc_pool_extend) shown in your reference image.
+    perf record -F "$RATE" -g -o "$PERF_DATA" \
+        -- python3 "$TARGET" --width="$IMG_WIDTH" --height="$IMG_HEIGHT" $EXTRA_ARGS
 
-    if [ ! -s "$FOLDED" ]; then
-        echo "Error: py-spy produced no folded stacks for $TARGET." >&2
-        continue
-    fi
+    # Export the hierarchical call tree report to a text file
+    perf report -i "$PERF_DATA" --stdio > "$REPORT_OUT"
 
-    echo "Processing hotspot tables..."
-    {
-        echo "# $TARGET hotspots"
-        echo "# generated $(date -u +%Y-%m-%dT%H:%M:%SZ) from $(basename "$FOLDED")"
-        echo
-        echo "===== SELF TIME (leaf frame — where the CPU actually is) ====="
-        awk '{ n=split($0,a," "); cnt=a[n]; sub(/ [0-9]+$/,"");
-               m=split($0,f,";"); tot+=cnt; leaf[f[m]]+=cnt }
-             END { printf "TOTAL SAMPLES: %d\n\n", tot;
-                   for (k in leaf) printf "%8d  %6.2f%%  %s\n", leaf[k], 100*leaf[k]/tot, k }' \
-            "$FOLDED" | sort -rn | head -25[cite: 7]
-        echo
-        echo "===== CUMULATIVE (frame anywhere in the stack) ====="
-        awk '{ n=split($0,a," "); cnt=a[n]; sub(/ [0-9]+$/,"");
-               m=split($0,f,";"); tot+=cnt; delete seen;
-               for (i=1;i<=m;i++) if (!(f[i] in seen)) { cum[f[i]]+=cnt; seen[f[i]]=1 } }
-             END { for (k in cum) printf "%8d  %6.2f%%  %s\n", cum[k], 100*cum[k]/tot, k }' \
-            "$FOLDED" | sort -rn | head -20[cite: 7]
-    } > "$HOT"
+    echo -e "\n=========================================="
+    echo " Saved $TARGET hierarchy to $REPORT_OUT "
+    echo "=========================================="
 
-    # Output results to terminal
-    cat "$HOT"
-    echo -e "\nSaved full tables for $TARGET to $HOT"
+    # Print the top 35 lines to terminal to immediately replicate the image view
+    head -n 35 "$REPORT_OUT"
 done
