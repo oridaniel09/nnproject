@@ -1,5 +1,5 @@
---- run_benchmark.baseline.py	2026-09-09 13:41:15
-+++ run_benchmark.py	2026-09-08 10:51:20
+--- run_benchmark.baseline.py	2026-09-14 15:41:16
++++ run_benchmark.py	2026-09-14 15:41:26
 @@ -176,6 +176,10 @@
  
  class HuffmanTable(object):
@@ -71,7 +71,7 @@
          cached_length = -1
          cached = None
          for x in self.table:
-@@ -286,7 +336,15 @@
+@@ -286,7 +336,16 @@
  
  
  def move_to_front(l, c):
@@ -80,15 +80,16 @@
 +    # which builds three slices, concatenates them into a fourth list and
 +    # copies that back over l -- four O(n) passes and four allocations per
 +    # call, on a ~150 entry list called ~90k times per decompression.
-+    # pop()+insert() do the same rotation as two C-level memmoves with no
-+    # intermediate objects, and c == 0 (the case MTF is designed to make
-+    # common) becomes free.
++    # pop()+insert() are list methods implemented in C: each shifts the
++    # affected slots one position within the existing array (pop via memmove,
++    # insert via a pointer loop) and allocates nothing.  c == 0 -- the repeat
++    # case MTF exists to make common -- becomes free.
 +    if c:
 +        l.insert(0, l.pop(c))
  
  
  def bwt_transform(L):
-@@ -387,6 +445,7 @@
+@@ -387,6 +446,7 @@
          codes = OrderedHuffmanTable(g)
          codes.populate_huffman_symbols()
          codes.min_max_bits()
