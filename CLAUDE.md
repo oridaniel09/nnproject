@@ -8,7 +8,7 @@ ssh qemu-naranja
 
 If this fails, the qemu machine needs to be booted
 the first step is entering the naranja4 vm:
-ssh naranja
+ssh naranja4
 inside, we run:
 qemu-system-x86_64 -m 4096m -nographic -cpu host,pmu=on -accel kvm     -nic user,model=virtio-net-pci,hostfwd=tcp::12028-:22     -drive file=jammy-server-cloudimg-amd64-disk-kvm.img,format=qcow2
 

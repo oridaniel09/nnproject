@@ -46,3 +46,18 @@
 29. what are the current files that are changed?
 30. what are these new python files? what do they do?
 31. commit them, then rebase from main. and then push my changes
+32. Read @Project.pdf what's missing from the assignment requirements?
+33. I am responsible for the pyflate section. Let's focus just on that. Has  the software improvement been made?
+34. where does the changed code sit in our repo?
+35. So how were the measurements done on this new file? with py-spy?
+36. now it should be up, if not you have instructions to raise it
+37. yes fix it
+38. Okay, what's next?
+39. First explain exactly what the script will do
+40. Does the script generate the report as appears in page 1 of the instructions?
+41. what is the dwarf test ?
+42. what fields should the report show that currently don't work?
+43. wait for the dwarf result then write the script
+44. yes run it on the VM
+45. yes
+46. yes push
