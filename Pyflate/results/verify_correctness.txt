@@ -1,0 +1,5 @@
+baseline    399360 bytes  md5=afa004a630fe072901b1d9628b960974
+optimized   399360 bytes  md5=afa004a630fe072901b1d9628b960974
+libbz2      399360 bytes  md5=afa004a630fe072901b1d9628b960974
+
+all three identical: True

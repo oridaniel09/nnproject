@@ -8,13 +8,13 @@ Baseline attribution (py-spy, cumulative share of `decode_huffman_block`):
 
 | Frame | % of runtime |
 |---|---|
-| `find_next_symbol` | 47.22% |
-| `move_to_front` | 15.39% |
-| `bwt_reverse` | 13.50% |
-| own lines | 21.58% |
+| `find_next_symbol` | 46.43% |
+| `move_to_front` | 16.92% |
+| `bwt_reverse` | 13.41% |
+| own lines | 21.05% |
 
 The baseline analysis showed this is an instruction-count problem, not a
-branch- or cache-miss problem (IPC 2.63, 0.34% branch misses). So both
+branch- or cache-miss problem (IPC 2.64, 0.35% branch misses). So both
 optimizations attack the same thing: the number of Python bytecodes executed
 per decoded symbol.
 
@@ -88,8 +88,8 @@ The bit accessors are inlined into the loop rather than called, which is where
 most of the win actually comes from. The new loop peeks the same ~2.3 times per
 symbol as the old one did — but as inline shift-and-mask arithmetic instead of
 `snoopbits()` -> `needbits()` + `_mask()`. The profile confirms it:
-`snoopbits`, `readbits` and `_mask` together fall from 25.06% of runtime to
-0.65%.
+`snoopbits`, `readbits` and `_mask` together fall from 24.18% of runtime to
+0.63%.
 
 The fast path is guarded by `not reversed and self.perm is not None`. The
 gzip/DEFLATE path uses `reversed=True` (bit-reversed codes, which are not

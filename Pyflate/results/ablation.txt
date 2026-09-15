@@ -1,0 +1,12 @@
+# pyflate ablation — 2026-09-15T20:33:07Z
+# time: best of 12 decompressions (ablate.py, output md5 asserted)
+# instructions: perf stat -r 3 over 3 decompressions plus interpreter startup
+
+run_benchmark.py.baseline best=1.1261s  (md5 ok)
+    instructions: 21524503431
+v_mtf_only.py      best=0.9491s  (md5 ok)
+    instructions: 19045898811
+v_huff_only.py     best=0.8691s  (md5 ok)
+    instructions: 16979507191
+run_benchmark.py   best=0.7099s  (md5 ok)
+    instructions: 14344547696

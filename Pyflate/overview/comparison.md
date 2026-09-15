@@ -6,97 +6,122 @@ an in-place rotation replacing the four-slice list rebuild in
 `move_to_front`. Output verified byte-identical to the baseline
 implementation and to libbz2.
 
+All numbers below come from one run of `./script_pyflate.sh --ablation` on the
+QEMU VM (2026-09-15). Raw data: `results/compare_pyflate.txt`,
+`results/baseline/`, `results/optimized/`.
+
 ## Wall clock — pyperformance, 60 samples each
+
+Both variants were benchmarked with the same interpreter and venv
+(`venv/cpython3.10-0a2f95361109-compat-31b33d68c68a`).
 
 | Metric | Baseline | Optimized | Change |
 |---|---|---|---|
-| Mean | 1.124 s | 0.718 s | **1.57x faster** |
-| Std dev | ±0.018 s | ±0.016 s | |
-| Min | 1.108 s | 0.704 s | |
-| Max | 1.229 s | 0.811 s | |
+| Mean | 1.141 s | 0.714 s | **1.60x faster** |
+| Std dev | ±0.067 s | ±0.014 s | |
+| Median | 1.125 s | 0.712 s | 1.58x faster |
+| Min | 1.100 s | 0.698 s | |
+| Max | 1.584 s | 0.788 s | |
 
-Time saved per decompression: 407 ms (36.2%).
+Time saved per decompression: 427 ms (37.4%). `pyperformance compare` rates
+the change as significant (t=48.58).
+
+The baseline's larger std dev comes from a single 1.584 s sample; the next
+slowest is 1.281 s. The VM has one CPU, so an occasional host-side hiccup lands
+directly on a sample. The median, which ignores it, still gives 1.58x.
 
 ## Hardware counters — 5 decompressions x 3 runs
 
 | Counter | Baseline | Optimized | Change |
 |---|---|---|---|
-| cycles | 13,637,215,142 | 8,990,756,292 | -34.1% |
-| instructions | 35,794,198,438 | 24,102,947,178 | -32.7% |
-| branches | 7,114,835,494 | 4,594,305,427 | -35.4% |
-| branch-misses | 24,180,671 | 15,708,792 | -35.0% |
-| cache-references | 25,762,049 | 21,307,515 | -17.3% |
-| cache-misses | 1,876,831 | 1,873,285 | -0.2% |
-| L1-dcache-loads | 10,767,384,277 | 7,135,835,920 | -33.7% |
-| L1-dcache-load-misses | 271,623,206 | 69,172,177 | -74.5% |
-| IPC | 2.62 | 2.68 | +2.1% |
-| branch miss rate | 0.34% | 0.34% | |
-| cache miss rate | 7.29% | 8.79% | |
+| cycles | 13,595,107,086 | 8,815,163,489 | -35.2% |
+| instructions | 35,899,254,692 | 23,821,962,019 | -33.6% |
+| branches | 7,151,658,799 | 4,510,978,821 | -36.9% |
+| branch-misses | 24,879,633 | 14,211,080 | -42.9% |
+| cache-references | 24,956,205 | 20,504,605 | -17.8% |
+| cache-misses | 1,849,367 | 1,863,201 | +0.7% |
+| L1-dcache-loads | 10,875,206,264 | 7,176,067,428 | -34.0% |
+| L1-dcache-load-misses | 278,024,538 | 70,306,891 | -74.7% |
+| IPC | 2.64 | 2.70 | +2.3% |
+| branch miss rate | 0.35% | 0.32% | |
+| cache miss rate | 7.41% | 9.09% | |
 
 The initial analysis called this an instruction-count problem rather than a
 branch- or cache-miss problem. The counters confirm the fix matched the
-diagnosis: instructions fell 32.7% and cycles fell in step with them (34.1%),
-while the branch miss *rate* stayed flat at 0.34%. IPC is essentially unchanged
-(2.62 -> 2.68) — the machine was never stalling, it was simply being handed a
-third fewer instructions to run.
+diagnosis: instructions fell 33.6% and cycles fell in step with them (35.2%),
+while the branch miss *rate* stayed essentially flat (0.35% -> 0.32%). IPC is
+barely changed (2.64 -> 2.70) — the machine was never stalling, it was simply
+being handed a third fewer instructions to run.
 
 Two counters are worth a second look:
 
-* **L1-dcache-load-misses fell 74.5%**, far more than the 33.7% drop in L1
+* **L1-dcache-load-misses fell 74.7%**, far more than the 34.0% drop in L1
   loads. This is the `move_to_front` change: the old version allocated four
   fresh lists per call, ~90k times per decompression, so the working set was
   constantly-churning new memory. Rotating one list in place keeps the same
   ~150 entries resident in L1.
-* **The last-level cache miss *rate* rose (7.29% -> 8.79%)** even though the
-  absolute miss count is flat (-0.2%). Cache references dropped 17.3% while the
+* **The last-level cache miss *rate* rose (7.41% -> 9.09%)** even though the
+  absolute miss count is flat (+0.7%). Cache references dropped 17.8% while the
   misses that remain are the same compulsory ones, so the ratio rises. This is
   not a regression — nothing got slower; the cheap hits were removed.
 
 ## Profile — py-spy, share of *baseline* runtime
 
-Optimized shares are rescaled by the sample-count ratio (29298 vs 39534
+Optimized shares are rescaled by the sample-count ratio (25818 vs 41431
 samples for the same 20 decompressions), so both columns measure against
 the same clock and the drops are real, not an artifact of a shrinking
-denominator.
+denominator. Per-function totals are in the `PER FUNCTION` section of
+`results/<label>/pyflate_hotspots_<label>.txt`.
 
 | Function | Baseline (cum) | Optimized (cum) | Baseline (self) | Optimized (self) |
 |---|---|---|---|---|
-| `decode_huffman_block` | 99.13% | 72.92% | 21.58% | 27.91% |
-| `find_next_symbol` | 47.22% | 26.30% | 16.60% | 20.75% |
-| `move_to_front` | 15.55% | 2.45% | 15.55% | 2.45% |
-| `bwt_reverse` | 13.50% | 14.92% | 5.26% | 6.51% |
-| `bwt_transform` | 8.24% | 8.41% | 8.24% | 8.41% |
-| `snoopbits` | 18.28% | 0.00% | 9.64% | 0.00% |
-| `readbits` | 13.08% | 0.75% | 10.67% | 0.53% |
-| `_mask` | 4.75% | 0.12% | 4.75% | 0.12% |
-| `needbits` | 6.30% | 5.65% | 1.10% | 1.12% |
-| `_more` | 5.20% | 4.53% | 2.99% | 2.82% |
-| `_read` | 2.21% | 1.72% | 2.21% | 1.72% |
+| `decode_huffman_block` | 99.06% | 61.33% | 21.05% | 20.29% |
+| `find_next_symbol` | 46.43% | 24.07% | 17.16% | 18.38% |
+| `move_to_front` | 16.92% | 2.17% | 16.92% | 2.17% |
+| `bwt_reverse` | 13.41% | 13.59% | 5.43% | 5.73% |
+| `bwt_transform` | 7.98% | 7.86% | 7.98% | 7.86% |
+| `snoopbits` | 17.72% | 0.00% | 9.42% | 0.00% |
+| `readbits` | 12.34% | 0.71% | 10.05% | 0.51% |
+| `_mask` | 4.71% | 0.11% | 4.71% | 0.11% |
+| `needbits` | 5.87% | 5.78% | 1.18% | 1.19% |
+| `_more` | 4.69% | 4.59% | 2.82% | 2.86% |
+| `_read` | 1.87% | 1.72% | 1.87% | 1.72% |
 
 Reading the two targeted rows:
 
-* `find_next_symbol` went from 47.22% of runtime to 26.30% — the linear table
+* `find_next_symbol` went from 46.43% of runtime to 24.07% — the linear table
   scan is gone, and what remains is the ~3-6 step walk over code lengths.
-* `move_to_front` went from 15.55% to 2.45% — effectively eliminated.
+* `move_to_front` went from 16.92% to 2.17% — effectively eliminated.
 * The bit accessors that `find_next_symbol` used to call (`snoopbits`,
-  `readbits`, `_mask`) collapse from 25.06% of runtime to 0.65% combined,
-  because the fast path inlines them instead of making three Python calls and
-  a `_mask()` allocation per code length tried. This is a large share of the
-  total win and it is a *second-order* effect of optimization #1 — it does not
-  show up if you only count the lines inside `find_next_symbol` itself.
+  `readbits`, `_mask`) collapse from 24.18% of runtime (self) to 0.63%
+  combined, because the fast path inlines them instead of making three Python
+  calls and a `_mask()` allocation per code length tried. This is a large share
+  of the total win and it is a *second-order* effect of optimization #1 — it
+  does not show up if you only count the lines inside `find_next_symbol` itself.
 
-`bwt_reverse` and `bwt_transform` grew as a share of the profile (13.50% ->
-14.92%, 8.24% -> 8.41%) while their absolute cost was essentially untouched.
-They are simply what is left once the two hotspots are removed, and they are
-where a third optimization would go.
+`bwt_reverse` and `bwt_transform` hold steady against the baseline clock
+(13.41% -> 13.59%, 7.98% -> 7.86%): their absolute cost was untouched. Within
+the optimized profile alone they grow to 21.81% and 12.61%, simply because
+they are what is left once the two hotspots are removed — and they are where a
+third optimization would go.
+
+## Call-graph report — perf record (Project.pdf page 1)
+
+`results/<label>/perf_report_<label>.txt` holds the `perf report --stdio`
+call-graph report the assignment's page 1 asks for, recorded with
+`python3-dbg`. It shows CPython's C internals rather than pyflate's Python
+functions: `_PyEval_EvalFrameDefault` is 23.0% self time in the baseline and
+23.5% in the optimized run, with ~99% of samples under it. The
+header of each report explains the flags that differ from page 1
+(`-e cpu-clock`, `--call-graph dwarf`, `--no-inline`), all forced by the VM.
 
 ## Summary for the presentation
 
 | | Baseline | Optimized |
 |---|---|---|
-| Time per decompression | 1.124 s | 0.718 s |
-| Speedup | — | **1.57x** |
-| Instructions per decompression | 7.16 B | 4.82 B |
-| Instructions per output byte | ~17,900 | ~12,100 |
-| `find_next_symbol` share | 47.22% | 26.30% |
-| `move_to_front` share | 15.55% | 2.45% |
+| Time per decompression | 1.141 s | 0.714 s |
+| Speedup | — | **1.60x** |
+| Instructions per decompression | 7.18 B | 4.76 B |
+| Instructions per output byte | ~17,980 | ~11,930 |
+| `find_next_symbol` share | 46.43% | 24.07% |
+| `move_to_front` share | 16.92% | 2.17% |
