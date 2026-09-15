@@ -1,8 +1,9 @@
 """Standalone driver for profiling the pyflate benchmark with py-spy.
 
-Imports the unmodified pyperformance bm_pyflate benchmark and runs its
-decompression workload directly, bypassing the pyperf harness so the
-profile contains only pyflate frames.
+Imports whichever run_benchmark.py is currently installed in pyperformance's
+bm_pyflate directory (script_pyflate.sh swaps in the baseline or optimized
+version) and runs its decompression workload directly, bypassing the pyperf
+harness so the profile contains only pyflate frames.
 """
 import os
 import sys

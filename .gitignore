@@ -5,7 +5,7 @@ venv
 # Office temp/lock files
 ~$*
 
-# profiling intermediates (large; regenerate with performance-analyze.sh)
+# profiling intermediates (large; regenerate with Pyflate/script_pyflate.sh)
 perf.data
 perf.data.old
 *.perf
