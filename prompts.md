@@ -61,3 +61,10 @@
 44. yes run it on the VM
 45. yes
 46. yes push
+47. I want to finish the current slides. [Image #1] I'm trying to explain what this code block (from the original code) does, can you explain ? (image: find_next_symbol from the original code)
+48. how many cycles does each symbol take on the new and improved code?
+49. what does the snoopbits do? I still don't get what the loop compares
+50. Do all following appearances of D need to do this as well?
+51. explain canonical huffman, why are all codes of one length consecutive numbers
+52. where can I find the code for the improvement? I want to add a screenshot to my slide
+53. add the snippet to the repo
