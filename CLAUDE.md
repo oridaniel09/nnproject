@@ -1,6 +1,5 @@
 In this repo we will implement the project described in @Project.pdf
 The first step is to configure the pyperformance in a virtual environment.
-All prompts made should be saved to the file @prompts.md
 
 How to connect to machine:
 First check if the machine is up:
