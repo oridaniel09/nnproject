@@ -19,28 +19,29 @@ Scripts:
 3. get_python_salls.sh 		- gets the Python functions call-stack for simpleRaytrace.py as requested for at the first page of the project's description, outputs to \perf_py_reports.
 4. get_python_salls2.sh 	- gets the Python functions call-stack for simpleRaytrace.py as requested for at the first page of the project's description, outputs to \perf_py_reports.
 5. memory_usage.sh			- runs valgrind to check memory usage of the bare implementations.
+6. script_raytrace.sh 		- runs all relevant scripts altogether.
 
 
 
 Output files:
 profile_results
-			1. simpleRaytrace.py_perf_stat.txt		- perf's results on the original program.
-			2. simpleRaytrace.py_flamegraph.svg 	- the Flamge graph of the original program.
-			3. Praytrace.py_perf_stat.txt			- perf's results on the optimized program.
-			4. Praytrace.py_flamegraph.svg 			- the Flame graph of the optimized program.
-			
-			5. BareSimpleRaytrace_perf_stat.txt		- perf's results on the bare original program.
-			6. BareSimpleRaytrace_flamegraph.svg	- the Flame graph of the bare original program.
-			7. BareCraytrace_perf_stat.txt 			- perf's results on the bare optimized program.
+1. simpleRaytrace.py_perf_stat.txt		- perf's results on the original program.
+2. simpleRaytrace.py_flamegraph.svg 	- the Flamge graph of the original program.
+3. Praytrace.py_perf_stat.txt			- perf's results on the optimized program.
+4. Praytrace.py_flamegraph.svg 			- the Flame graph of the optimized program.
+
+5. BareSimpleRaytrace_perf_stat.txt		- perf's results on the bare original program.
+6. BareSimpleRaytrace_flamegraph.svg	- the Flame graph of the bare original program.
+7. BareCraytrace_perf_stat.txt 			- perf's results on the bare optimized program.
 			
 perf_py_reports
-			1. perf_Praytrace.data					- the raw data.
-			2. perf_report_Praytrace.txt			- the Python functions call-stack of the optimized program.
-			3. perf_report_simpleRaytrace.txt		- the Python functions call-stack of the original program.
-			4. perf_simpleRaytrace.data 			- the raw data.
+1. perf_Praytrace.data					- the raw data.
+2. perf_report_Praytrace.txt			- the Python functions call-stack of the optimized program.
+3. perf_report_simpleRaytrace.txt		- the Python functions call-stack of the original program.
+4. perf_simpleRaytrace.data 			- the raw data.
 
 memory_results
-			1. time_py.txt							- timing results of the bare original implementation.
-			2. time_c.txt 							- timing results of the bare optimized implementation.
-			3. valgrind_py.txt						- memory usage results of the bare original implementation.
-			4. valgrind_c.txt						- memory usage results of the bare optimized implementation.
+1. time_py.txt							- timing results of the bare original implementation.
+2. time_c.txt 							- timing results of the bare optimized implementation.
+3. valgrind_py.txt						- memory usage results of the bare original implementation.
+4. valgrind_c.txt						- memory usage results of the bare optimized implementation.
