@@ -19,8 +19,8 @@ From http://www.lshift.net/blog/2008/10/29/toy-raytracer-in-python
 #include <stdbool.h>
 #include <stdint.h>
 
-# define DEFAULT_WIDTH 100
-# define DEFAULT_HEIGHT 100
+# define DEFAULT_WIDTH 199
+# define DEFAULT_HEIGHT 199
 # define EPSILON 0.00001
 
 
