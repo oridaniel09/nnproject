@@ -47,3 +47,7 @@ memory_results
 2. time_c.txt 							- timing results of the bare optimized implementation.
 3. valgrind_py.txt						- memory usage results of the bare original implementation.
 4. valgrind_c.txt						- memory usage results of the bare optimized implementation.
+
+
+
+HardwareAccel/SVCode contains the hardware accelerator's implementation, the names tell each file's purpose.
