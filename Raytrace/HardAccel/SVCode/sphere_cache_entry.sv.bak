@@ -1,0 +1,48 @@
+// the cache is composed of multiple of these and a controller
+
+module sphere_cache_entry (
+    input  logic        clk,
+    input  logic        rst_n,
+
+    // Write interface
+    input  logic        write_on,
+    input  logic [1:0]  write_sel,
+    input  logic [31:0] write_data,
+
+    // Validation interface, also used to lazily clear the entry
+    input  logic        set_valid,
+    output logic        valid_flag,
+
+    // Data outputs (Q16.16 format)
+    output logic [31:0] radius,
+    output logic [31:0] center_x,
+    output logic [31:0] center_y,
+    output logic [31:0] center_z
+);
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            valid_flag <= 1'b0;
+            radius     <= '0;
+            center_x   <= '0;
+            center_y   <= '0;
+            center_z   <= '0;
+        end else begin
+            // Update validity flag
+            if (set_valid) begin
+                valid_flag <= 1'b1;
+            end
+
+            // Handle data writes
+            if (write_on) begin
+                case (write_sel)
+                    2'b00: radius   <= write_data;
+                    2'b01: center_x <= write_data;
+                    2'b10: center_y <= write_data;
+                    2'b11: center_z <= write_data;
+                endcase
+            end
+        end
+    end
+
+endmodule

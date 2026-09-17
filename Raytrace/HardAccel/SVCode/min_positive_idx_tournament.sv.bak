@@ -1,0 +1,116 @@
+`timescale 1ns / 1ps
+
+module min_positive_x_tournament #(
+    parameter int N = 8,
+    // Dynamically calculate index width (minimum 1 bit)
+    localparam int IDX_W  = ($clog2(N) > 0) ? $clog2(N) : 1,
+    // Calculate tree levels and the next power of 2 for padding
+    localparam int LEVELS = $clog2(N),
+    localparam int P2_N   = 1 << LEVELS
+) (
+    input  logic                      clk,
+    input  logic                      rst_n,
+    
+    input  logic                      valid_in,
+
+    // Inputs
+    input  logic signed [31:0]        x_in [N],
+    input  logic                      y_in [N],
+
+    // Outputs
+    output logic [IDX_W-1:0]          min_idx,
+    output logic                      is_there_intersection,
+    output logic                      valid_out
+);
+
+    // Structure to pass data cleanly through the tournament bracket
+    typedef struct packed {
+        logic signed [31:0] val;
+        logic [IDX_W-1:0]   idx;
+        logic               valid;
+    } tree_node_t;
+
+    // 2D Array representing the entire tree: [Level][Node_Index]
+    // Level 0 has P2_N nodes, Level 1 has P2_N/2 nodes, etc.
+    tree_node_t tree [LEVELS+1][P2_N];
+
+    // =========================================================================
+    // LEVEL 0: Populate the base of the tree (Pad to power of 2 if necessary)
+    // =========================================================================
+    always_comb begin
+        for (int i = 0; i < P2_N; i++) begin
+            if (i < N) begin
+                tree[0][i].val   = x_in[i];
+                tree[0][i].idx   = i[IDX_W-1:0];
+                tree[0][i].valid = y_in[i];
+            end else begin
+                // Padding nodes automatically lose every match
+                tree[0][i].val   = '0;
+                tree[0][i].idx   = '0;
+                tree[0][i].valid = 1'b0; 
+            end
+        end
+    end
+
+    // =========================================================================
+    // TOURNAMENT LOGIC: Generate block to build explicit parallel comparators
+    // =========================================================================
+    genvar lvl, i;
+    generate
+        for (lvl = 0; lvl < LEVELS; lvl++) begin : g_level
+            // At each level, the number of nodes halves
+            for (i = 0; i < (P2_N >> (lvl + 1)); i++) begin : g_node
+                
+                always_comb begin
+                    automatic tree_node_t left  = tree[lvl][2*i];
+                    automatic tree_node_t right = tree[lvl][2*i+1];
+
+                    // Match logic: who wins and advances to the next level?
+                    if (left.valid && right.valid) begin
+                        // Both valid: smaller x wins
+                        if (left.val <= right.val) begin
+                            tree[lvl+1][i] = left;
+                        end else begin
+                            tree[lvl+1][i] = right;
+                        end
+                    end 
+                    else if (left.valid) begin
+                        // Only left is valid
+                        tree[lvl+1][i] = left;
+                    end 
+                    else if (right.valid) begin
+                        // Only right is valid
+                        tree[lvl+1][i] = right;
+                    end 
+                    else begin
+                        // Neither valid: propagate invalid state
+                        tree[lvl+1][i].val   = '0;
+                        tree[lvl+1][i].idx   = '0;
+                        tree[lvl+1][i].valid = 1'b0;
+                    end
+                end
+
+            end
+        end
+    endgenerate
+
+    // =========================================================================
+    // OUTPUT STAGE: Register the final winner
+    // =========================================================================
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            min_idx               <= '0;
+            is_there_intersection <= 1'b0;
+            valid_out             <= 1'b0;
+        end else begin
+            valid_out <= valid_in;
+
+            if (valid_in) begin
+                // The grand champion sits at the top of the tree: tree[LEVELS][0]
+                min_idx               <= tree[LEVELS][0].idx;
+                is_there_intersection <= tree[LEVELS][0].valid;
+            end
+        end
+    end
+
+endmodule

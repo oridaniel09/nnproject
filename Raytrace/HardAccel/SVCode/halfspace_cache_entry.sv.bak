@@ -1,0 +1,58 @@
+// the cache is composed of multiple of these and a controller
+// we could have made the write double the speed, as registers in cpu are mostly 64 bits, but not now, and this is setup, so not critical for a small amount of objects
+
+module halfspace_cache_entry (
+    input  logic        clk,
+    input  logic        rst_n,
+
+    // Write interface, a halfspace got 6 data entries, so ceil(log2(6))=3 bits for selection
+    input  logic        write_on,
+    input  logic [2:0]  write_sel,
+    input  logic [31:0] write_data,
+
+    // Validation interface, also used to lazily clear the entry
+    input  logic        set_valid,
+	 input  logic			clear_entry,
+    output logic        valid_flag,
+
+    // Data outputs (Q16.16 format)
+    output logic [31:0] point_x,
+    output logic [31:0] point_y,
+    output logic [31:0] point_z,
+    output logic [31:0] normal_x,
+    output logic [31:0] normal_y,
+    output logic [31:0] normal_z
+);
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n || clear_entry) begin
+            valid_flag <= 1'b0;
+            point_x   <= '0;
+            point_y   <= '0;
+            point_z   <= '0;
+				normal_x <= '0;
+				normal_y <= '0;
+				normal_z <= '0;
+				
+        end else begin
+            // Update validity flag
+            if (set_valid) begin
+                valid_flag <= 1'b1;
+            end
+
+            // Handle data writes
+            if (write_on) begin
+                case (write_sel)
+                    3'b000: point_x <= write_data;
+                    3'b001: point_y <= write_data;
+                    3'b010: point_z <= write_data;
+						  3'b011: normal_x <= write_data;
+						  3'b100: normal_y <= write_data;
+						  3'b101: normal_z <= write_data;
+						  default: valid_flag <= 1'b0;	// we tried to write into the wrong entry, unexpected behavior, invalidate the cache entry
+                endcase
+            end
+        end
+    end
+
+endmodule

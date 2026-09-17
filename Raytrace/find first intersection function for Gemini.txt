@@ -1,0 +1,38 @@
+void find_first_intersection(const Scene* scene, const Ray* ray, Min_Packer *result){
+    result->min_type = 0;    // no intersection
+
+    result->min_time = INFINITY;
+    double temp_time;
+    for (int i = 0; i < scene->simple_spheres_count; i++){
+        temp_time = intersection_time_sphere(&(scene->simple_spheres[i].sphere), ray);
+        if (temp_time < result->min_time && temp_time > -EPSILON) {
+            result->min_time = temp_time;
+            result->min_type = 1;
+            result->min_simple_sphere = scene->simple_spheres[i];
+        }
+    }
+    for (int i = 0; i < scene->checker_spheres_count; i++){
+        temp_time = intersection_time_sphere(&(scene->checker_spheres[i].sphere), ray);
+        if (temp_time < result->min_time && temp_time > -EPSILON) {
+            result->min_time = temp_time;
+            result->min_type = 2;
+            result->min_checkerboard_sphere = scene->checker_spheres[i];
+        }
+    }
+    for (int i = 0; i < scene->simple_halfspaces_count; i++){
+        temp_time = intersection_time_halfspace(&(scene->simple_halfspaces[i].halfspace), ray);
+        if (temp_time < result->min_time && temp_time > -EPSILON) {
+            result->min_time = temp_time;
+            result->min_type = 3;
+            result->min_simple_halfspace = scene->simple_halfspaces[i];
+        }
+    }
+    for (int i = 0; i < scene->checker_halfspaces_count; i++){
+        temp_time = intersection_time_halfspace(&(scene->checker_halfspaces[i].halfspace), ray);
+        if (temp_time < result->min_time && temp_time > -EPSILON) {
+            result->min_time = temp_time;
+            result->min_type = 4;
+            result->min_checkerboard_halfspace = scene->checker_halfspaces[i];
+        }
+    }
+}

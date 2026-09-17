@@ -1,0 +1,201 @@
+// Using balanced (16:16) fixed-point arithmetic and variable-cycle
+// Q16.16 Format: [31] Sign, [30:16] Integer, [15:0] Fraction
+
+module calc_sphere_intersection_time (
+    input  logic               clk,    // Added missing clk
+    input  logic               rst_n,
+    input  logic               start_calc,
+	 
+	 input  logic 					 valid_entry,	// if the entry is filled with legit values
+    
+    input  logic signed [31:0] sphere_radius,
+    input  logic signed [31:0] sphere_center_x, sphere_center_y, sphere_center_z,
+    
+    input  logic signed [31:0] ray_point_x, ray_point_y, ray_point_z,
+    input  logic signed [31:0] ray_vector_x, ray_vector_y, ray_vector_z,
+    
+    output logic signed [31:0] intersection_time,
+    output logic               validity_bit, 
+    output logic               intersection_exists
+);
+
+    typedef enum logic [2:0] {
+        IDLE         = 3'b000,
+        PREP_BEAM    = 3'b001,
+        PREP_MULTS   = 3'b010,
+        CALC_DISCR   = 3'b011,
+        DECIDE_INTER = 3'b100,
+        CALC_SQRT    = 3'b101  // Added state for variable-cycle square root
+    } state_t;
+
+    state_t current_state, next_state;
+    logic [2:0] cycle_cnt;
+
+    // Intermediate datapath registers
+    logic signed [31:0] beam_dir_x, beam_dir_y, beam_dir_z;
+    logic signed [31:0] dot_proj;
+    logic signed [31:0] temp_mult_x, temp_mult_y, temp_mult_z;
+    logic signed [31:0] radius_sq, dot_proj_sq, temp_beam_sq;
+    logic signed [31:0] discriminant;
+
+    // Hardware SQRT interface signals
+    logic               sqrt_start;
+    logic               sqrt_valid;
+    logic signed [31:0] sqrt_result;
+
+    // External variable-latency SQRT module instantiation
+    // (Resolves when sqrt_valid goes high)
+    q16_16_sqrt u_sqrt (
+        .clk(clk),
+        .rst_n(rst_n),
+        .start(sqrt_start),
+        .radicand(discriminant),
+        .result(sqrt_result),
+        .valid(sqrt_valid)
+    );
+
+    // Q16.16 Multiplication Function
+    function automatic logic signed [31:0] q_mult(
+        input logic signed [31:0] a, 
+        input logic signed [31:0] b
+    );
+        logic signed [63:0] temp;
+        temp = 64'(a) * 64'(b);
+        return temp[47:16];
+    endfunction
+
+    // ---------------------------------------------------------
+    // Sequential State and Datapath Logic
+    // ---------------------------------------------------------
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            current_state       <= IDLE;
+            cycle_cnt           <= '0;
+            validity_bit        <= 1'b0;
+            intersection_exists <= 1'b0;
+            sqrt_start          <= 1'b0;
+        end else begin
+            current_state <= next_state;
+            
+            // Cycle counter for sub-state serial operations
+            if (current_state != next_state) begin
+                cycle_cnt <= '0;
+            end else begin
+                cycle_cnt <= cycle_cnt + 3'd1;
+            end
+
+            // Datapath Execution
+            case (current_state)
+                IDLE: begin
+                    validity_bit <= 1'b0;
+                end
+                
+                // Stage 1: Vector creation (1 cycle seriality)
+					 // Vector beam_direction = vector_from_1_to_2_creation(&ray->point, &s->centre);
+                PREP_BEAM: begin
+                    beam_dir_x <= sphere_center_x - ray_point_x;
+                    beam_dir_y <= sphere_center_y - ray_point_y;
+                    beam_dir_z <= sphere_center_z - ray_point_z;
+                end
+                
+                // Stage 2: Dot projection (Parallel mults -> Sequential adds)
+					 // Q16:16 dot_projection = dot_product(&beam_direction, &ray->vector);
+                PREP_MULTS: begin
+                    if (cycle_cnt == 0) begin
+                        temp_mult_x <= q_mult(beam_dir_x, ray_vector_x);
+                        temp_mult_y <= q_mult(beam_dir_y, ray_vector_y);
+                        temp_mult_z <= q_mult(beam_dir_z, ray_vector_z);
+                    end else if (cycle_cnt == 1) begin
+                        dot_proj <= temp_mult_x + temp_mult_y + temp_mult_z;
+                    end
+                end
+
+                // Stage 3 & 4: Discriminant calculation (Parallel mults -> Sequential adds -> Sub)
+					 // Q16:16 discriminant = (s->radius * s->radius) - (dot_product(&beam_direction, &beam_direction) - dot_projection * dot_projection);
+                CALC_DISCR: begin
+                    if (cycle_cnt == 0) begin
+                        radius_sq   <= q_mult(sphere_radius, sphere_radius);
+                        dot_proj_sq <= q_mult(dot_proj, dot_proj);
+                        
+                        // beam_direction * beam_direction
+                        temp_mult_x <= q_mult(beam_dir_x, beam_dir_x);
+                        temp_mult_y <= q_mult(beam_dir_y, beam_dir_y);
+                        temp_mult_z <= q_mult(beam_dir_z, beam_dir_z);
+                    end else if (cycle_cnt == 1) begin
+                        temp_beam_sq <= temp_mult_x + temp_mult_y + temp_mult_z;
+                    end else if (cycle_cnt == 2) begin
+                        discriminant <= radius_sq - (temp_beam_sq - dot_proj_sq);
+                    end
+                end
+                
+                // Stage 5a: Condition check
+					 // if (discriminant < 0) {
+					 //	  return -1.0; // no intersection
+					 // }
+                DECIDE_INTER: begin
+                    if (discriminant < 0) begin
+                        intersection_time   <= 32'hFFFF0000; // -1.0 in Q16.16
+                        intersection_exists <= 1'b0;
+                        validity_bit        <= 1'b1;
+                    end else begin
+                        sqrt_start <= 1'b1;
+                    end
+                end
+
+                // Stage 5b: Variable cycle wait & Final Output
+					 // return dot_projection - sqrt(discriminant);
+                CALC_SQRT: begin
+                    sqrt_start <= 1'b0; // Pulse start
+                    if (sqrt_valid) begin
+                        intersection_time   <= dot_proj - sqrt_result;
+                        intersection_exists <= 1'b1 & valid_entry;
+                        validity_bit        <= 1'b1;
+                    end
+                end
+            endcase
+        end
+    end
+
+    // ---------------------------------------------------------
+    // Next State Combinational Logic
+    // ---------------------------------------------------------
+    always_comb begin
+        next_state = current_state; 
+        
+        case (current_state)
+            IDLE: begin
+                if (start_calc) next_state = PREP_BEAM;
+            end
+            
+				//
+            PREP_BEAM: begin
+                next_state = PREP_MULTS;
+            end
+            
+            PREP_MULTS: begin
+                if (cycle_cnt == 3'd1) next_state = CALC_DISCR;
+            end
+
+            CALC_DISCR: begin
+                if (cycle_cnt == 3'd2) next_state = DECIDE_INTER;
+            end
+            
+            DECIDE_INTER: begin
+                if (discriminant < 0) begin
+                    next_state = IDLE;
+                end else begin
+                    next_state = CALC_SQRT;
+                end
+            end
+
+            CALC_SQRT: begin
+                if (sqrt_valid) next_state = IDLE;
+            end
+
+            default: begin
+                next_state = IDLE;
+            end
+        endcase
+    end
+
+endmodule
