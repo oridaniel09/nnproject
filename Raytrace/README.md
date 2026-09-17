@@ -2,7 +2,7 @@ The Raytrace directory:
 
 *All files are in the same directory except for reports that each has a corresponding directory
 
-*Files that aren't mentioned don't matter.
+**Files that aren't mentioned don't matter.
 
 Program files:
 1. simpleRaytrace.py	 	- the original Python benchmark code
