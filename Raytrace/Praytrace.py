@@ -5,8 +5,8 @@ import os
 # Load your compiled C
 craytrace = ctypes.CDLL(os.path.abspath("CraytraceLib.so"))
 
-DEFAULT_WIDTH = 800
-DEFAULT_HEIGHT = 800
+DEFAULT_WIDTH = 199
+DEFAULT_HEIGHT = 199
 EPSILON = 0.00001
 
 
