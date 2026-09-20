@@ -1,0 +1,20 @@
+The hardware accelerator will focus on the find_next_symbol method of the huffman decode.
+It will take the raw unecoded bit data and the symbol table for every chunk and perform the symbol conversion.
+The Idea of the accelerator:
+A 64-bit register holds the stream MSB-first, we take the first 20 bits.
+We read those 20 bits as 19 different numbers - the first number is the first 2 bits, then the first.3 bits, and so on and so forth.
+We have 19 comparators working all at once, each hardwired to their own length - n.
+the comparators perform prefix[n] <= limit[n].
+we pick the smallest one that reads '1', that is our length.
+finally we run perm[prefix[n] - base[n]] where n is the shortest matching length. - this is our symbol.
+
+Our encoded data is split into blocks - each 900KB. we run decoding on every encoded symbol in that block, one after the other.
+There is no way to parallelize each block, as we don't know where to split the encoded bytes.
+
+The first step is loading the data.
+
+The data is organized by the CPU, and the hardware receives it in set addresses.
+
+1. the limit[] array. This contains the highest lexicographical symbol of every length.
+2. the base[] array. This contains the base code for the specific length.
+3. 
